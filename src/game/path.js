@@ -16,38 +16,42 @@ export class Pathfinder {
   }
 
   // request async path (processed with per-tick budget); cb(path|null)
-  request(sx, sy, tx, ty, cb) {
-    this.queue.push({ sx, sy, tx, ty, cb });
+  request(sx, sy, tx, ty, cb, amphib = false) {
+    this.queue.push({ sx, sy, tx, ty, cb, amphib });
   }
 
   processQueue(budget = 8) {
     let n = 0;
     while (this.queue.length && n < budget) {
       const r = this.queue.shift();
-      r.cb(this.find(r.sx, r.sy, r.tx, r.ty));
+      r.cb(this.find(r.sx, r.sy, r.tx, r.ty, 5200, r.amphib));
       n++;
     }
   }
 
+  pass(cx, cy, amphib) {
+    return amphib ? this.map.isPassableAmphib(cx, cy) : this.map.isPassable(cx, cy);
+  }
+
   // nearest passable cell to target (spiral) — so clicks on water/buildings still work
-  nearestOpen(tx, ty, maxR = 14) {
+  nearestOpen(tx, ty, maxR = 14, amphib = false) {
     const m = this.map;
-    if (m.isPassable(tx, ty)) return { tx, ty };
+    if (this.pass(tx, ty, amphib)) return { tx, ty };
     for (let r = 1; r <= maxR; r++) {
       for (let dy = -r; dy <= r; dy++) {
         for (let dx = -r; dx <= r; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           const x = tx + dx, y = ty + dy;
-          if (m.inB(x, y) && m.isPassable(x, y)) return { tx: x, ty: y };
+          if (m.inB(x, y) && this.pass(x, y, amphib)) return { tx: x, ty: y };
         }
       }
     }
     return null;
   }
 
-  find(sx, sy, txx, tyy, maxNodes = 5200) {
+  find(sx, sy, txx, tyy, maxNodes = 5200, amphib = false) {
     const m = this.map, w = m.w, h = m.h;
-    const t = this.nearestOpen(txx, tyy);
+    const t = this.nearestOpen(txx, tyy, 14, amphib);
     if (!t) return null;
     const tx = t.tx, ty = t.ty;
     if (sx === tx && sy === ty) return [];
@@ -82,9 +86,9 @@ export class Pathfinder {
           if (!dx && !dy) continue;
           const nx = cur.x + dx, ny = cur.y + dy;
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          if (!m.isPassable(nx, ny)) continue;
+          if (!this.pass(nx, ny, amphib)) continue;
           // no corner cutting through blocked orthogonals
-          if (dx && dy && (!m.isPassable(cur.x + dx, cur.y) || !m.isPassable(cur.x, cur.y + dy))) continue;
+          if (dx && dy && (!this.pass(cur.x + dx, cur.y, amphib) || !this.pass(cur.x, cur.y + dy, amphib))) continue;
           const ni = ny * w + nx;
           const step = (dx && dy) ? SQRT2 : 1;
           const g = gscore[ci] + step;
@@ -104,11 +108,11 @@ export class Pathfinder {
     }
     path.reverse();
     if (!path.length) return null;
-    return this.smooth(sx, sy, path);
+    return this.smooth(sx, sy, path, amphib);
   }
 
   // string-pulling: drop intermediate waypoints when a straight walk is clear
-  smooth(sx, sy, path) {
+  smooth(sx, sy, path, amphib = false) {
     const out = [];
     let cx = sx, cy = sy;
     let k = 0;
@@ -116,7 +120,7 @@ export class Pathfinder {
       // furthest visible waypoint from current
       let far = k;
       for (let j = Math.min(path.length - 1, k + 18); j > k; j--) {
-        if (this.lineClear(cx, cy, path[j][0], path[j][1])) { far = j; break; }
+        if (this.lineClear(cx, cy, path[j][0], path[j][1], amphib)) { far = j; break; }
       }
       out.push(path[far]);
       cx = path[far][0]; cy = path[far][1];
@@ -125,19 +129,18 @@ export class Pathfinder {
     return out;
   }
 
-  lineClear(x0, y0, x1, y1) {
+  lineClear(x0, y0, x1, y1, amphib = false) {
     // supercover grid walk
-    const m = this.map;
     let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
     let x = x0, y = y0;
     const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     let err = dx - dy;
     for (;;) {
-      if (!m.isPassable(x, y)) return false;
+      if (!this.pass(x, y, amphib)) return false;
       if (x === x1 && y === y1) return true;
       const e2 = 2 * err;
       if (e2 > -dy) {
-        if (e2 < dx && !m.isPassable(x, y + sy)) return false; // diagonal squeeze check
+        if (e2 < dx && !this.pass(x, y + sy, amphib)) return false; // diagonal squeeze check
         err -= dy; x += sx;
       } else {
         err += dx; y += sy;

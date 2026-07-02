@@ -9,7 +9,8 @@
     "building": "Retro 1990s real-time strategy PC game sprite, in the style of classic Command & Conquer and Red Alert era games. 16-bit pixel-art aesthetic with crisp chunky pixels and a clean readable silhouette. Viewed from directly overhead, top-down at a slight 3/4 angle. Single hard sunlight from the top-left. Muted cold military palette: gunmetal grey-blue armor plating, olive-drab details, weathered battle-worn metal with rivets and panel lines, and bright TEAL (#2EE6D6) accent panels and markings. Subject perfectly centered, filling about 78% of the frame. Plain background. No text, no watermark, no UI, no frame. The structure sits on a weathered square concrete foundation pad whose edges are aligned with the image axes (not rotated), with a subtle short drop shadow toward the bottom-right baked in.",
     "prop": "Retro 1990s real-time strategy PC game environment sprite, 16-bit pixel-art aesthetic, crisp chunky pixels. Viewed from directly overhead, top-down. Single hard sunlight from the top-left. Muted natural palette that fits a dry steppe battlefield. Subject centered, filling about 72% of the frame. Plain background. No text, no watermark. Strictly NO ground shadow.",
     "terrain": "Seamless tileable terrain texture for a retro 1990s real-time strategy PC game, viewed from directly overhead (true top-down orthographic). 16-bit pixel-art aesthetic. Muted, low-contrast, evenly lit with no vignette and no bright hotspots, so game units stay readable on top of it. The texture must tile perfectly: the left and right edges match each other exactly, and the top and bottom edges match each other exactly. No text, no watermark.",
-    "cameo": "Unit portrait icon for a 2003-era RTS game sidebar, in the exact style of Red Alert 2 cameo icons: a dramatic close-up 3/4 view of the subject filling most of the frame, dark navy-steel gradient background with subtle diagonal tech panel lines, strong warm rim lighting from the top-left, painted military concept-art style with crisp confident brushwork, high contrast and readable at small size. No text, no watermark, no border, no frame."
+    "cameo": "Unit portrait icon for a 2003-era RTS game sidebar, in the exact style of Red Alert 2 cameo icons: a dramatic close-up 3/4 view of the subject filling most of the frame, dark navy-steel gradient background with subtle diagonal tech panel lines, strong warm rim lighting from the top-left, painted military concept-art style with crisp confident brushwork, high contrast and readable at small size. No text, no watermark, no border, no frame.",
+    "hifi": "Modern high-fidelity real-time strategy game art in the style of 2020s AAA RTS games: painterly realistic military rendering, physically-plausible materials and lighting, volumetric atmosphere, rich micro-detail, desaturated military palette with teal faction accents. Top-down RTS camera angle. No text, no watermark, no UI."
   },
   "assets": {
     "unit_rifle": {
@@ -579,6 +580,121 @@
         "w": 100,
         "h": 86,
         "quantize": 128
+      }
+    },
+    "bld_wall": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A single modular fortified wall segment for a retro RTS, one tile square: thick reinforced concrete block wall with steel plating cap, rivets and a teal hazard light strip, viewed top-down at a slight 3/4 angle, designed to visually connect seamlessly with identical neighboring segments on left and right.",
+      "process": {
+        "type": "building",
+        "size": 36
+      },
+      "meta": {
+        "fw": 1,
+        "fh": 1
+      }
+    },
+    "bld_shield": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A shield generator building for a retro RTS: a compact reinforced base housing a large glowing TEAL crystal emitter ring held by three curved prongs, humming with faint energy, thick power cables, small cooling fins.",
+      "process": {
+        "type": "building",
+        "size": 78
+      },
+      "meta": {
+        "fw": 2,
+        "fh": 2
+      }
+    },
+    "unit_fieldgun": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "A towed heavy field gun (artillery piece) seen from directly above with the long barrel pointing UP toward 12 o'clock: split-trail carriage legs spread toward the bottom, two rubber wheels at the sides, armored gun shield plate near the breech, gunmetal with teal markings.",
+      "process": {
+        "type": "unit",
+        "size": 40
+      }
+    },
+    "unit_hovercraft": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "A military hovercraft troop transport seen from directly above with its front pointing UP toward 12 o'clock: a wide flat rectangular deck with an inflated black rubber skirt all around, twin rear ducted fans, an open troop bay in the middle, gunmetal armor with teal stripes.",
+      "process": {
+        "type": "unit",
+        "size": 46
+      }
+    },
+    "cameo_bld_wall": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A massive fortified concrete and steel wall line stretching into the distance, battle-scarred.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_shield": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A glowing teal energy shield dome projected over military structures by a crystal emitter.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_fieldgun": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A towed heavy field gun with its crew of two soldiers pushing it into position, muzzle flash ready.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_hovercraft": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A military hovercraft transport skimming over water with spray, loaded with troops.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "hifi_test_tank": {
+      "style": "hifi",
+      "background": "opaque",
+      "prompt": "A modern main battle tank on cracked steppe terrain, viewed from a top-down RTS camera at about 60 degrees, dust on its tracks, teal squad markings, photoreal painterly game-art quality.",
+      "process": {
+        "type": "title",
+        "width": 900
+      }
+    },
+    "hifi_test_base": {
+      "style": "hifi",
+      "background": "opaque",
+      "prompt": "A military base cluster (construction yard, power plant with glowing teal coils, ore refinery) on dry steppe, viewed from a top-down RTS camera, long soft shadows, volumetric dust, painterly AAA RTS quality.",
+      "process": {
+        "type": "title",
+        "width": 900
+      }
+    },
+    "hifi_test_terrain": {
+      "style": "hifi",
+      "background": "opaque",
+      "prompt": "Seamless-looking dry steppe battlefield terrain with subtle tire tracks, scattered rocks, dry grass tufts and a shallow water inlet, viewed from directly above, AAA RTS ground-texture quality, even lighting.",
+      "process": {
+        "type": "title",
+        "width": 900
       }
     }
   }

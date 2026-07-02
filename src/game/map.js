@@ -2,7 +2,7 @@
 
 import { TILE, mulberry32, clamp } from '../engine/core.js';
 import { spr } from '../engine/assets.js';
-import { ECON } from './data.js';
+import { ECON, pace } from './data.js';
 
 export const T_GRASS = 0, T_DIRT = 1, T_WATER = 2, T_ROCK = 3, T_TREE = 4;
 
@@ -31,6 +31,13 @@ export class GameMap {
     if (!this.inB(cx, cy)) return false;
     const t = this.tiles[cy * this.w + cx];
     if (t === T_WATER || t === T_ROCK || t === T_TREE) return false;
+    return this.bld[cy * this.w + cx] === -1;
+  }
+  // hovercraft & friends: water is fair game
+  isPassableAmphib(cx, cy) {
+    if (!this.inB(cx, cy)) return false;
+    const t = this.tiles[cy * this.w + cx];
+    if (t === T_ROCK || t === T_TREE) return false;
     return this.bld[cy * this.w + cx] === -1;
   }
   isBuildable(cx, cy) {
@@ -102,8 +109,9 @@ export class GameMap {
           const dx = cx - bx, dy = cy - by;
           const d = Math.sqrt(dx * dx + dy * dy);
           if (d < r && this.tiles[cy * w + cx] === T_GRASS) {
-            const amt = ECON.oreCellMax * rich * this.p.oreRich * (1 - d / r * 0.55) * (0.7 + rng() * 0.3);
-            this.ore[cy * w + cx] = Math.min(ECON.oreCellMax, amt);
+            const cellMax = ECON.oreCellMax * pace().ore;
+            const amt = cellMax * rich * this.p.oreRich * (1 - d / r * 0.55) * (0.7 + rng() * 0.3);
+            this.ore[cy * w + cx] = Math.min(cellMax, amt);
             const mx = w - 1 - cx, my = h - 1 - cy;
             if (this.tiles[my * w + mx] === T_GRASS) this.ore[my * w + mx] = this.ore[cy * w + cx];
           }
@@ -265,7 +273,7 @@ export class GameMap {
     const amt = this.ore[cy * this.w + cx];
     if (this.oreDrawn) this.oreDrawn[cy * this.w + cx] = amt;
     if (amt <= 0) return;
-    const frac = amt / ECON.oreCellMax;
+    const frac = Math.min(1, amt / (ECON.oreCellMax * pace().ore));
     const s = frac > 0.55 ? spr('prop_ore1') : spr('prop_ore2');
     const scale = 0.6 + 0.4 * frac;
     const dw = s.width * scale, dh = s.height * scale;
@@ -289,9 +297,11 @@ export class GameMap {
   regenOre(dt) {
     // slow regen on existing cells (call at low frequency with scaled dt)
     const n = this.w * this.h;
+    const cellMax = ECON.oreCellMax * pace().ore;
+    const rate = ECON.oreRegen * pace().oreRegen;
     for (let i = 0; i < n; i++) {
-      if (this.ore[i] > 0 && this.ore[i] < ECON.oreCellMax) {
-        this.ore[i] = Math.min(ECON.oreCellMax, this.ore[i] + ECON.oreRegen * dt);
+      if (this.ore[i] > 0 && this.ore[i] < cellMax) {
+        this.ore[i] = Math.min(cellMax, this.ore[i] + rate * dt);
         // refresh the sprite once regrowth is visually meaningful
         if (this.oreDrawn && this.ore[i] - this.oreDrawn[i] > 90) {
           this.drawOreCell(i % this.w, (i / this.w) | 0);

@@ -2,7 +2,7 @@
 
 import { TILE, DT, dist, dist2, angDiff, turnToward, clamp, lerp } from '../engine/core.js';
 import { sprTeam, spr, pivotOf } from '../engine/assets.js';
-import { UNITS, BUILDINGS, WEAPONS, ECON, BUILD_TIME, PLAYER, TEAM_COLORS } from './data.js';
+import { UNITS, BUILDINGS, WEAPONS, ECON, BUILD_TIME, PLAYER, TEAM_COLORS, pace } from './data.js';
 
 let NEXT_ID = 1;
 export const resetIds = () => { NEXT_ID = 1; };
@@ -31,7 +31,8 @@ export class Unit {
     this.w = this.d.weapon ? WEAPONS[this.d.weapon] : null;
     this.owner = owner;
     this.x = x; this.y = y; this.prevX = x; this.prevY = y;
-    this.hp = this.d.hp; this.maxHp = this.d.hp;
+    this.maxHp = Math.round(this.d.hp * pace().hp);
+    this.hp = this.maxHp;
     this.heading = owner === PLAYER ? -Math.PI / 2 : Math.PI / 2;
     this.turret = this.d.turretSprite ? { ang: this.heading, recoil: 0 } : null;
     this.state = 'idle';
@@ -52,9 +53,78 @@ export class Unit {
     this.skillCd = 0;
     this.skillT = 0;       // active skill remaining (sprint)
     this.deployed = false; // rocketeer siege stance
+    this.crew = this.d.crewed ? [] : null;      // field gun operators
+    this.cargo = this.d.transport ? [] : null;  // hovercraft passengers
+    this.boardTarget = null;
+  }
+
+  // crewed weapon gates
+  canFire() { return !this.d.crewed || (this.crew && this.crew.length >= this.d.crewed.fireNeed); }
+  canMove() { return !this.d.crewed || (this.crew && this.crew.length >= this.d.crewed.moveNeed); }
+
+  orderBoard(g, target, silent) {
+    if (!this.d.organic || !target || target.hp <= 0) return false;
+    const ok = (target.d.crewed && target.crew.length < target.d.crewed.max && (target.crew.length > 0 ? target.owner === this.owner : true))
+      || (target.d.transport && target.owner === this.owner && target.cargo.length < target.d.transport.cap);
+    if (!ok) return false;
+    this.state = 'boarding';
+    this.boardTarget = target;
+    this.target = null; this.amPos = null; this.resumeAM = null; this.guardMode = false; this.deployed = false;
+    this.requestPathTo(g, target.x, target.y);
+    if (!silent && this.owner === PLAYER) g.audio.ack();
+    return true;
+  }
+
+  updateBoarding(g) {
+    const t = this.boardTarget;
+    if (!t || t.hp <= 0 || t.dead) { this.boardTarget = null; this.state = 'idle'; return; }
+    const full = (t.d.crewed && t.crew.length >= t.d.crewed.max) || (t.d.transport && t.cargo.length >= t.d.transport.cap);
+    if (full) { this.boardTarget = null; this.state = 'idle'; return; }
+    const d = dist(this.x, this.y, t.x, t.y);
+    if (d > t.d.r + 22) {
+      this.repathT -= DT;
+      if ((!this.path && !this.pendingPath) || this.repathT <= 0) {
+        this.requestPathTo(g, t.x, t.y);
+        this.repathT = 1.0;
+      }
+      this.moveAlong(g);
+      return;
+    }
+    // climb aboard
+    const record = { key: this.key, hp: this.hp, kills: this.kills, rank: this.rank };
+    if (t.d.crewed) {
+      // capturing an abandoned gun flips its ownership
+      if (t.crew.length === 0 && t.owner !== this.owner) {
+        t.owner = this.owner;
+        if (this.owner === PLAYER) g.onBanner && g.onBanner('缴获敌方野战炮！', 'gold');
+      }
+      t.crew.push(record);
+    } else {
+      t.cargo.push(record);
+    }
+    g.removeUnitSoft(this);
+  }
+
+  // dismount crew / unload passengers around this vehicle
+  unloadAll(g) {
+    const list = this.crew || this.cargo;
+    if (!list || !list.length) return false;
+    const taken = new Set();
+    while (list.length) {
+      const rec = list.pop();
+      const cell = g.map.findFreeNear((this.x / TILE) | 0, (this.y / TILE) | 0, taken, 5);
+      const u = g.spawnUnit(rec.key, this.owner, cell.cx * TILE + 16, cell.cy * TILE + 16, true);
+      u.hp = Math.min(u.maxHp, rec.hp);
+      u.kills = rec.kills; u.rank = rec.rank;
+    }
+    g.combat.puff(this.x, this.y, 'dust', 6, 0.6);
+    if (this.owner === PLAYER) g.audio.sfx('click');
+    return true;
   }
 
   useSkill(g) {
+    // crewed gun / transport: F = dismount / unload
+    if (this.d.crewed || this.d.transport) return this.unloadAll(g);
     const sk = this.d.skill;
     if (!sk) return false;
     if (sk.toggle) {
@@ -130,7 +200,7 @@ export class Unit {
       this.pendingPath = false;
       this.path = p; this.pathIdx = 0;
       this.stuckT = 0;
-    });
+    }, !!this.d.amphibious);
   }
 
   // -------- per-tick update --------
@@ -180,6 +250,7 @@ export class Unit {
       case 'attack': this.updateAttack(g); break;
       case 'harvest': this.updateHarvest(g); break;
       case 'build': this.updateBuild(g); break;
+      case 'boarding': this.updateBoarding(g); break;
       case 'idle':
       default:
         this.acquireMaybe(g, false);
@@ -252,7 +323,7 @@ export class Unit {
       this.heading = turnToward(this.heading, want, this.d.turn * DT);
       aligned = Math.abs(angDiff(this.heading, want)) < 0.16;
     }
-    if (aligned && this.cool <= 0 && this.burstLeft === 0 && d >= (this.d.minRange || 0) * TILE) {
+    if (aligned && this.cool <= 0 && this.burstLeft === 0 && d >= (this.d.minRange || 0) * TILE && this.canFire()) {
       this.burstLeft = this.w.burst;
       this.fireAt(g, t);
     }
@@ -307,6 +378,7 @@ export class Unit {
   }
 
   stepToward(g, wx, wy) {
+    if (!this.canMove()) { this.path = null; return false; }  // crewed gun without full crew
     const want = Math.atan2(wy - this.y, wx - this.x);
     this.heading = turnToward(this.heading, want, this.d.turn * DT);
     if (this.turret && !this.target) {
@@ -332,17 +404,18 @@ export class Unit {
 
   tryMove(g, nx, ny) {
     const m = g.map;
+    const pass = this.d.amphibious ? m.isPassableAmphib.bind(m) : m.isPassable.bind(m);
     // escape rule: if we're standing inside a blocked cell (e.g. just left the factory
     // door), any movement is allowed so we can walk out instead of being trapped.
     const ccx = clamp((this.x / TILE) | 0, 0, m.w - 1), ccy = clamp((this.y / TILE) | 0, 0, m.h - 1);
-    if (!m.isPassable(ccx, ccy)) { this.x = nx; this.y = ny; return true; }
+    if (!pass(ccx, ccy)) { this.x = nx; this.y = ny; return true; }
     const cx = clamp((nx / TILE) | 0, 0, m.w - 1), cy = clamp((ny / TILE) | 0, 0, m.h - 1);
-    if (m.isPassable(cx, cy)) { this.x = nx; this.y = ny; return true; }
+    if (pass(cx, cy)) { this.x = nx; this.y = ny; return true; }
     // slide along axes
     const cx2 = clamp((nx / TILE) | 0, 0, m.w - 1), cyKeep = clamp((this.y / TILE) | 0, 0, m.h - 1);
-    if (m.isPassable(cx2, cyKeep)) { this.x = nx; return true; }
+    if (pass(cx2, cyKeep)) { this.x = nx; return true; }
     const cxKeep = clamp((this.x / TILE) | 0, 0, m.w - 1), cy2 = clamp((ny / TILE) | 0, 0, m.h - 1);
-    if (m.isPassable(cxKeep, cy2)) { this.y = ny; return true; }
+    if (pass(cxKeep, cy2)) { this.y = ny; return true; }
     return false;
   }
 
@@ -547,6 +620,23 @@ export class Unit {
       ctx.restore();
     }
 
+    // field gun: crew visibly pushes from the rear while moving
+    if (this.d.crewed && this.crew.length >= 2 && this.path && this.pathIdx < (this.path.length || 0)) {
+      const crewImg = sprTeam('unit_rifle', this.owner);
+      if (crewImg) {
+        for (const side of [-1, 1]) {
+          const ang = this.heading + Math.PI;
+          const cxp = px + Math.cos(ang) * (this.d.r + 6) * z + Math.cos(this.heading + Math.PI / 2) * side * 6 * z;
+          const cyp = py + Math.sin(ang) * (this.d.r + 6) * z + Math.sin(this.heading + Math.PI / 2) * side * 6 * z;
+          ctx.save();
+          ctx.translate(cxp, cyp + Math.sin(g.time * 13 + side) * 0.8 * z);
+          ctx.rotate(this.heading + Math.PI / 2);
+          ctx.drawImage(crewImg, -crewImg.width * z / 2, -crewImg.height * z / 2, crewImg.width * z, crewImg.height * z);
+          ctx.restore();
+        }
+      }
+    }
+
     // harvester load glint
     if (this.harv && this.harv.load > 100) {
       const f = this.harv.load / ECON.harvestCapacity;
@@ -589,6 +679,26 @@ export class Unit {
       ctx.fillStyle = col.main;
       ctx.fillRect(px - 1.5, py + (this.selRadius + 3) * z, 3, 3);
     }
+    // crew pips (field gun) / passenger count (transport)
+    if (this.d.crewed) {
+      const bx = px - 8, by = py + (this.selRadius + 4) * z;
+      for (let i = 0; i < this.d.crewed.max; i++) {
+        ctx.fillStyle = i < this.crew.length ? '#ffd75e' : 'rgba(60,66,76,0.9)';
+        ctx.fillRect(bx + i * 9, by, 7, 4);
+      }
+      if (this.crew.length === 0 && (g.tick % 22) < 13) {
+        ctx.font = `bold ${10 * z}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffd75e';
+        ctx.fillText('无人操作', px, by + 14 * z);
+      }
+    }
+    if (this.d.transport && this.cargo.length) {
+      ctx.font = `bold ${9 * z}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#9fe8ff';
+      ctx.fillText(`${this.cargo.length}/${this.d.transport.cap}`, px, py + (this.selRadius + 12) * z);
+    }
     // deployed stance marker
     if (this.deployed) {
       ctx.strokeStyle = 'rgba(255,215,94,0.75)';
@@ -629,10 +739,13 @@ export class Building {
     this.x = (cx + this.fw / 2) * TILE;
     this.y = (cy + this.fh / 2) * TILE;
     this.prevX = this.x; this.prevY = this.y;
-    this.maxHp = this.d.hp;
+    this.maxHp = Math.round(this.d.hp * pace().hp);
     // instant = pre-placed (game start); otherwise a construction site awaiting engineers
     this.state = instant ? 'active' : 'site';
     this.hp = instant ? this.maxHp : this.maxHp * ECON.siteInitHpFrac;
+    this.shield = { v: 0, max: 0, hitT: 0, lastHit: -99, stamp: -999 };
+    this._gridOk = true;
+    this._gridCheck = -99;
     this.rise = instant ? 1 : 0;
     this.progress = instant ? 1 : 0;
     this.spent = 0;
@@ -650,6 +763,24 @@ export class Building {
     this.queue = [];
     this.prodT = 0;
     this.prodSpent = 0;
+  }
+
+  // is this building inside a friendly power grid? (cached, cheap chebyshev on tile coords)
+  inGrid(g) {
+    if (!this.d.needsGrid) return true;
+    if (g.tick - this._gridCheck < 15) return this._gridOk;
+    this._gridCheck = g.tick;
+    const mcx = this.cx + this.fw / 2, mcy = this.cy + this.fh / 2;
+    this._gridOk = g.buildings.some(b =>
+      b.owner === this.owner && b.hp > 0 && b.state === 'active' && b.d.gridRange &&
+      Math.max(Math.abs(b.cx + b.fw / 2 - mcx), Math.abs(b.cy + b.fh / 2 - mcy)) <= b.d.gridRange);
+    return this._gridOk;
+  }
+
+  // powered AND on-grid — the master switch for advanced systems
+  online(g) {
+    const p = g.power[this.owner];
+    return p.out >= p.use && this.inGrid(g);
   }
 
   canTrain(key) { return UNITS[key] && UNITS[key].factory === this.key; }
@@ -769,10 +900,31 @@ export class Building {
     // per-building unit production
     if (this.state === 'active') this.updateProduction(g);
 
+    // shield generator aura: grant shield capacity to nearby friendly structures
+    if (this.d.shieldAura && this.state === 'active' && (g.tick % 10) === 0 && this.online(g)) {
+      const aura = this.d.shieldAura;
+      for (const b of g.buildings) {
+        if (b.owner !== this.owner || b === this || b.hp <= 0 || b.state !== 'active') continue;
+        if (dist(this.x, this.y, b.x, b.y) > aura.range) continue;
+        b.shield.max = Math.max(b.shield.max, Math.round(b.maxHp * aura.frac));
+        b.shield.stamp = g.tick;
+        b.shield.regenDelay = aura.regenDelay;
+        b.shield.regenRate = aura.regenRate;
+      }
+    }
+    // shield upkeep on this building (decay when no generator, regen out of combat)
+    if (this.shield.max > 0) {
+      if (g.tick - this.shield.stamp > 45) { this.shield.max = 0; this.shield.v = 0; }
+      else if (this.shield.v < this.shield.max && g.time - this.shield.lastHit > (this.shield.regenDelay || 9)) {
+        this.shield.v = Math.min(this.shield.max, this.shield.v + this.shield.max * (this.shield.regenRate || 0.05) * DT);
+      }
+      if (this.shield.hitT > 0) this.shield.hitT -= DT;
+    }
+
     // repair platform aura: patch up nearby friendly vehicles for credits
     if (this.d.repairAura && this.state === 'active' && (g.tick % 5) === 0) {
       const aura = this.d.repairAura;
-      const lowPow = g.power[this.owner].out < g.power[this.owner].use;
+      const lowPow = !this.online(g);
       if (!lowPow) {
         let fixed = 0;
         g.eachEntityNear(this.x, this.y, aura.range, e => {
@@ -803,8 +955,8 @@ export class Building {
     }
     // turret behavior
     if (this.turret && this.state === 'active') {
-      const lowPow = g.power[this.owner].out < g.power[this.owner].use;
-      // tesla towers are fully dead without power
+      const lowPow = g.power[this.owner].out < g.power[this.owner].use || !this.inGrid(g);
+      // tesla towers are fully dead without power / off-grid
       if (this.w.kind === 'tesla' && lowPow) { this.tgt = null; }
       else {
         if (this.coolB === undefined) this.coolB = 0;
@@ -833,9 +985,8 @@ export class Building {
     }
     // superweapon charging
     if (this.d.superweapon && this.state === 'active') {
-      const lowPow = g.power[this.owner].out < g.power[this.owner].use;
-      const full = this.d.superweapon.charge;
-      if (!lowPow && (this.chargeT || 0) < full) {
+      const full = this.d.superweapon.charge * pace().superMul;
+      if (this.online(g) && (this.chargeT || 0) < full) {
         this.chargeT = (this.chargeT || 0) + DT;
         if (this.chargeT >= full && this.owner === PLAYER) g.eva('siloReady');
       }
@@ -883,9 +1034,19 @@ export class Building {
 
   takeDamage(amount, attacker) {
     if (this.state === 'selling') return;
+    // shields absorb first
+    if (this.shield.v > 0) {
+      const absorbed = Math.min(this.shield.v, amount);
+      this.shield.v -= absorbed;
+      amount -= absorbed;
+      this.shield.hitT = 0.3;
+      this.shield.lastHit = window.__game.time;
+      if (amount <= 0.01) { window.__game.onDamaged(this, attacker); return; }
+    }
     this.hp -= amount;
     this.flash = 0.08;
     const g = window.__game;
+    this.shield.lastHit = g.time;
     if (this.hp <= 0) { this.die(g, attacker); return; }
     g.onDamaged(this, attacker);
   }
@@ -985,6 +1146,38 @@ export class Building {
       ctx.restore();
     }
 
+    // shield bubble
+    if (this.shield.v > 0.5) {
+      const rx = this.fw * TILE * 0.62 * z, ry = this.fh * TILE * 0.55 * z;
+      const frac = this.shield.v / this.shield.max;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const hot = this.shield.hitT > 0 ? this.shield.hitT / 0.3 : 0;
+      ctx.strokeStyle = `rgba(90,220,255,${0.16 + 0.22 * frac + 0.5 * hot})`;
+      ctx.lineWidth = (1.4 + hot * 2.2) * z;
+      ctx.beginPath();
+      ctx.ellipse(px, py - 2 * z, rx, ry, 0, 0, 7);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(190,240,255,${0.10 + 0.4 * hot})`;
+      ctx.lineWidth = 0.8 * z;
+      ctx.beginPath();
+      ctx.ellipse(px, py - 2 * z, rx * 0.96, ry * 0.96, 0, 0, 7);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // off-grid warning
+    if (this.d.needsGrid && this.state === 'active' && !this._gridOk && (g.tick % 24) < 14) {
+      ctx.font = `bold ${12 * z}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffd75e';
+      ctx.fillText('⚡', px - 5 * z, py - this.fh * TILE * 0.55 * z);
+      ctx.strokeStyle = '#ff4b3a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px + 2 * z, py - this.fh * TILE * 0.55 * z - 8 * z);
+      ctx.lineTo(px + 12 * z, py - this.fh * TILE * 0.55 * z + 2 * z);
+      ctx.stroke();
+    }
     // radar dish blink
     if (this.key === 'radar' && this.state === 'active') {
       const on = g.power[this.owner].out >= g.power[this.owner].use;

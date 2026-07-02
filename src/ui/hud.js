@@ -150,6 +150,12 @@ export class HUD {
         return;
       }
       if (e.button === 0) {
+        // wall drag-line placement begins on mousedown
+        if (g.mode === 'placing' && g.placing === 'wall') {
+          this.wallStart = { cx: (this.mouse.wx / TILE) | 0, cy: (this.mouse.wy / TILE) | 0 };
+          g.wallLine = [[this.wallStart.cx, this.wallStart.cy]];
+          return;
+        }
         if (g.mode === 'nuke') {
           if (this.nukeSilo && g.launchNuke(this.nukeSilo, this.mouse.wx, this.mouse.wy)) {
             g.mode = 'normal';
@@ -212,6 +218,20 @@ export class HUD {
           cx: ((this.mouse.wx / TILE) | 0) - (d.fw >> 1),
           cy: ((this.mouse.wy / TILE) | 0) - (d.fh >> 1),
         };
+        // extend the wall line while dragging (axis-locked)
+        if (g.placing === 'wall' && this.wallStart) {
+          const ex = (this.mouse.wx / TILE) | 0, ey = (this.mouse.wy / TILE) | 0;
+          const s = this.wallStart;
+          const line = [];
+          if (Math.abs(ex - s.cx) >= Math.abs(ey - s.cy)) {
+            const step = ex >= s.cx ? 1 : -1;
+            for (let x = s.cx; x !== ex + step; x += step) line.push([x, s.cy]);
+          } else {
+            const step = ey >= s.cy ? 1 : -1;
+            for (let y = s.cy; y !== ey + step; y += step) line.push([s.cx, y]);
+          }
+          g.wallLine = line.slice(0, 24);
+        }
       }
       g.hoverEntity = g.pickAt(this.mouse.wx, this.mouse.wy);
     });
@@ -219,6 +239,16 @@ export class HUD {
     window.addEventListener('mouseup', e => {
       if (!this.enabled) return;
       if (e.button === 1) { this.rig.panning = false; this.panRef = null; return; }
+      // finish wall drag-line
+      if (e.button === 0 && this.wallStart) {
+        const g = this.g;
+        const line = g.wallLine || [];
+        g.placeWallLine(line);
+        this.wallStart = null;
+        g.wallLine = null;
+        // stay in placing mode for more walls
+        return;
+      }
       if (e.button !== 0 || !this.mouse.down) return;
       this.mouse.down = false;
       const g = this.g;
@@ -284,7 +314,7 @@ export class HUD {
 
   onRightClick() {
     const g = this.g;
-    if (g.mode === 'placing') { g.mode = 'normal'; g.placing = null; return; }  // back to READY state
+    if (g.mode === 'placing') { g.mode = 'normal'; g.placing = null; g.wallLine = null; this.wallStart = null; return; }
     if (g.mode === 'sell' || g.mode === 'repair') { this.setMode('normal'); return; }
     const units = this.selectedUnits();
     const hover = g.pickAt(this.mouse.wx, this.mouse.wy);
@@ -303,6 +333,22 @@ export class HUD {
       g.cmdAttack(units, hover);
       this.audio.noteCombatUi?.();
       return;
+    }
+    // infantry: right-click a field gun (or own transport) = board it
+    if (hover && !hover.isBuilding && (hover.d.crewed || hover.d.transport)) {
+      const troops = units.filter(u => u.d.organic);
+      const boardable = (hover.d.crewed && hover.crew.length < hover.d.crewed.max && (hover.crew.length > 0 ? hover.owner === PLAYER : true))
+        || (hover.d.transport && hover.owner === PLAYER && hover.cargo.length < hover.d.transport.cap);
+      if (troops.length && boardable) {
+        let n = 0;
+        for (const u of troops) { if (u.orderBoard(g, hover, n > 0)) n++; }
+        if (n) {
+          g.markers.push({ x: hover.x, y: hover.y, t: 0.6, type: 'move' });
+          const rest = units.filter(u => !u.d.organic);
+          if (rest.length) g.cmdMove(rest, this.mouse.wx, this.mouse.wy);
+          return;
+        }
+      }
     }
     // engineers: right-click own site (or damaged building) = build / repair
     if (hover && hover.owner === PLAYER && hover.isBuilding) {
@@ -403,7 +449,7 @@ export class HUD {
         }
         case 'Escape':
           if (this.buildMenuOpen) { this.buildMenuOpen = false; this.cbSig = ''; }
-          else if (g.mode !== 'normal') { this.setMode('normal'); g.placing = null; this.nukeSilo = null; }
+          else if (g.mode !== 'normal') { this.setMode('normal'); g.placing = null; this.nukeSilo = null; g.wallLine = null; this.wallStart = null; }
           else if (this.attackArmed) this.attackArmed = false;
           else if (g.selection.size) g.selection.clear();
           else this.onEsc && this.onEsc();
@@ -443,7 +489,7 @@ export class HUD {
           const map = { KeyQ: 0, KeyW: 1, KeyE: 2, KeyR: 3, KeyT: 4, KeyY: 5, KeyU: 6, KeyI: 7, KeyO: 8 };
           if (e.code in map && !e.ctrlKey) {
             if (this.buildMenuOpen) {
-              const bmMap = { ...map, KeyU: 6, KeyI: 7, KeyO: 8 };
+              const bmMap = { ...map, KeyU: 6, KeyI: 7, KeyO: 8, KeyP: 9, KeyJ: 10 };
               const key = BUILD_MENU[bmMap[e.code]];
               if (key && g.prereqsMet(key) && g.startProduction(key)) { this.buildMenuOpen = false; this.cbSig = ''; }
               else if (key) this.audio.sfx('deny');
@@ -666,9 +712,12 @@ export class HUD {
       rows.push(['生命', `${Math.ceil(e.hp)}/${e.maxHp}`, hpCls]);
       if (!e.isBuilding) {
         const w = e.w;
+        rows.push(['类型', e.d.organic ? '生物' : '机械']);
         rows.push(['攻击', w ? `${w.dmg}${w.burst > 1 ? '×' + w.burst : ''}` : '—']);
         if (w) rows.push(['射程', String(w.range)]);
         rows.push(['速度', String(e.d.speed)]);
+        if (e.d.crewed) rows.push(['乘员', `${e.crew.length}/${e.d.crewed.max}`, e.crew.length === 0 ? 'red' : e.crew.length < 2 ? 'gold' : '']);
+        if (e.d.transport) rows.push(['载员', `${e.cargo.length}/${e.d.transport.cap}`, 'gold']);
         if ((e.kills || 0) > 0) rows.push(['击杀', String(e.kills), 'gold']);
         if ((e.rank || 0) > 0) rows.push(['军衔', e.rank === 2 ? '精英 +40%' : '老兵 +20%', 'gold']);
         if (e.harv) rows.push(['载矿', `${Math.round(e.harv.load)}/700`, 'gold']);
@@ -769,7 +818,7 @@ export class HUD {
     if (this.buildMenuOpen && hasBuilder) {
       const cmds = this.cb.cmds;
       cmds.innerHTML = '';
-      const hkeys = ['Q', 'W', 'E', 'R', 'T', 'Y'];
+      const hkeys = ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 'J'];
       BUILD_MENU.forEach((key, i) => {
         const d = BUILDINGS[key];
         const met = g.prereqsMet(key);
@@ -823,6 +872,13 @@ export class HUD {
     }
     if (hasHarv) {
       btns.push({ t: '矿', hk: 'V', fn: () => this.autoHarvest(units) });
+    }
+    // crewed gun / transport: unload button
+    if (units.some(u => (u.d.crewed && u.crew.length) || (u.d.transport && u.cargo.length))) {
+      btns.push({
+        t: '卸', hk: 'F', title: '下炮 / 卸载全部乘员',
+        fn: () => { for (const u of units) if (u.d.crewed || u.d.transport) u.unloadAll(g); this.cbSig = ''; },
+      });
     }
     // unit skills (sprint / deploy)
     const skillKeys = new Set();

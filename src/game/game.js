@@ -8,7 +8,7 @@ import { Fog } from './fog.js';
 import { Combat } from './combat.js';
 import { Unit, Building, resetIds } from './entities.js';
 import { AIController } from './ai.js';
-import { UNITS, BUILDINGS, BUILD_TIME, ECON, EVA, DIFFICULTY, PLAYER, ENEMY, TEAM_COLORS } from './data.js';
+import { UNITS, BUILDINGS, BUILD_TIME, ECON, EVA, DIFFICULTY, PLAYER, ENEMY, TEAM_COLORS, setPace, pace } from './data.js';
 
 export class Game {
   constructor(canvas, audio, opts = {}) {
@@ -19,6 +19,8 @@ export class Game {
     this.audio = audio;
     this.diffKey = opts.difficulty || 'normal';
     this.diff = DIFFICULTY[this.diffKey];
+    this.paceKey = opts.pace || 'standard';
+    setPace(this.paceKey);
     this.seed = opts.seed ?? 20260702;
     this.rng = mulberry32(this.seed ^ 0x9e3779b9);
 
@@ -99,12 +101,26 @@ export class Game {
   }
 
   // ---------- entity mgmt ----------
-  spawnUnit(key, owner, x, y) {
+  spawnUnit(key, owner, x, y, restored = false) {
     const u = new Unit(key, owner, x, y);
     this.units.push(u);
     this.byId.set(u.id, u);
-    this.stats[owner].built++;
+    if (!restored) this.stats[owner].built++;
+    // field guns roll out with a full two-man crew
+    if (u.d.crewed && !restored) {
+      const chp = Math.round(UNITS.rifle.hp * (u.maxHp / u.d.hp));
+      u.crew.push({ key: 'rifle', hp: chp, kills: 0, rank: 0 }, { key: 'rifle', hp: chp, kills: 0, rank: 0 });
+    }
     return u;
+  }
+
+  // remove a unit that boarded a vehicle (not a death)
+  removeUnitSoft(u) {
+    u.hp = 0; u.dead = true;
+    this.units = this.units.filter(x => x !== u);
+    this.byId.delete(u.id);
+    this.selection.delete(u);
+    this.ai.notifyUnitDied(u);
   }
 
   spawnUnitFromFactory(b, key) {
@@ -316,7 +332,34 @@ export class Game {
 
   hasRadar(owner = PLAYER) {
     const p = this.power[owner];
-    return p.out >= p.use && this.buildings.some(b => b.owner === owner && b.key === 'radar' && b.hp > 0 && b.state === 'active');
+    return p.out >= p.use && this.buildings.some(b => b.owner === owner && b.key === 'radar' && b.hp > 0 && b.state === 'active' && b.inGrid(this));
+  }
+
+  // place a whole line of wall sites at once (drag-placement)
+  placeWallLine(cells) {
+    let placed = 0;
+    let firstSite = null;
+    for (const [cx, cy] of cells) {
+      if (!this.canPlace('wall', cx, cy)) continue;
+      const s = this.placeBuilding('wall', cx, cy, PLAYER);
+      if (!firstSite) firstSite = s;
+      placed++;
+    }
+    if (firstSite) {
+      let crew = [...this.selection].filter(e => !e.isBuilding && e.d.builder && e.hp > 0);
+      if (!crew.length) {
+        const u = this.units.find(u => u.owner === PLAYER && u.d.builder && u.hp > 0 && u.state === 'idle')
+          || this.units.find(u => u.owner === PLAYER && u.d.builder && u.hp > 0);
+        if (u) crew = [u];
+      }
+      for (const u of crew) u.orderBuild(this, firstSite, true);
+      this.audio.sfx('place');
+      this.eva('building');
+    } else if (cells.length) {
+      this.eva('cannotBuildThere');
+      this.audio.sfx('deny');
+    }
+    return placed;
   }
 
   // ---------- production (player sidebar) ----------
@@ -742,8 +785,38 @@ export class Game {
       ctx.beginPath(); ctx.moveTo(px - 3, py); ctx.lineTo(px + 3, py); ctx.moveTo(px, py - 3); ctx.lineTo(px, py + 3); ctx.stroke();
     }
 
+    // power grid coverage rings while placing
+    if (this.mode === 'placing' && this.placing) {
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      for (const b of this.buildings) {
+        if (b.owner !== PLAYER || b.hp <= 0 || b.state !== 'active' || !b.d.gridRange) continue;
+        const px = (b.x - cam.x) * z, py = (b.y - cam.y) * z;
+        const r = b.d.gridRange * TILE * z;
+        ctx.strokeStyle = 'rgba(46,230,214,0.30)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.stroke();
+        ctx.fillStyle = 'rgba(46,230,214,0.03)';
+        ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // wall drag-line ghost
+    if (this.mode === 'placing' && this.wallLine && this.wallLine.length) {
+      for (const [cx, cy] of this.wallLine) {
+        const ok = this.canPlace('wall', cx, cy);
+        ctx.fillStyle = ok ? 'rgba(60,255,140,0.25)' : 'rgba(255,60,50,0.3)';
+        ctx.fillRect((cx * TILE - cam.x) * z + 1, (cy * TILE - cam.y) * z + 1, TILE * z - 2, TILE * z - 2);
+        const img = sprTeam('bld_wall', PLAYER);
+        ctx.globalAlpha = 0.5;
+        ctx.drawImage(img, ((cx + 0.5) * TILE - cam.x) * z - img.width * z / 2, ((cy + 0.5) * TILE - cam.y) * z - img.height * z / 2, img.width * z, img.height * z);
+        ctx.globalAlpha = 1;
+      }
+    }
+
     // placement ghost
-    if (this.mode === 'placing' && this.placing && this.placeHover) {
+    if (this.mode === 'placing' && this.placing && this.placeHover && !(this.wallLine && this.wallLine.length)) {
       const d = BUILDINGS[this.placing];
       const { cx, cy } = this.placeHover;
       const ok = this.canPlace(this.placing, cx, cy);

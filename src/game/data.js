@@ -2,6 +2,15 @@
 
 export const PLAYER = 0, ENEMY = 1;
 
+// game pace: epic mode stretches a match to 20-120 minutes
+export const PACE = {
+  standard: { cn: '标 准', build: 1, hp: 1, ore: 1, oreRegen: 1, wave: 1, superMul: 1 },
+  epic:     { cn: '史 诗', build: 2.6, hp: 1.8, ore: 2.5, oreRegen: 2.2, wave: 2.1, superMul: 2 },
+};
+let paceMult = PACE.standard;
+export function setPace(key) { paceMult = PACE[key] || PACE.standard; return paceMult; }
+export function pace() { return paceMult; }
+
 export const TEAM_COLORS = {
   [PLAYER]: { main: '#35e8d8', sel: '#3ff0e0', hp: '#35e85f', mini: '#35e8d8' },
   [ENEMY]:  { main: '#ff4444', sel: '#ff5348', hp: '#ff5348', mini: '#ff4040' },
@@ -25,19 +34,23 @@ export const WEAPONS = {
                 arcH: 34, trail: true,
                 vs: { inf: 0.85, light: 0.8, heavy: 0.65, building: 1.35 }, sfx: 'rocket' },
   teslaZap:   { dmg: 95, rof: 2.6, range: 6.0, kind: 'tesla', chain: 2, chainDmg: 48, burst: 1,
-                vs: { inf: 1.0, light: 1.0, heavy: 1.0, building: 0.5 }, sfx: 'tesla' },
+                vs: { inf: 1.25, light: 1.0, heavy: 1.0, building: 0.5 }, sfx: 'tesla' },  // extra vs organic
+  fieldCannon: { dmg: 85, rof: 3.4, range: 7.6, kind: 'shell', speed: 300, splash: 20, burst: 1, arcH: 22,
+                vs: { inf: 0.7, light: 1.0, heavy: 1.0, building: 1.1 }, sfx: 'cannon2' },
 };
 
 export const BUILDINGS = {
   conyard: {
     cn: '建 造 厂', en: 'CONSTRUCTION YARD', cost: 2500, hp: 1500, power: 0,
     fw: 3, fh: 3, sight: 6, sprite: 'bld_conyard', buildable: false, produces: 'veh',
-    desc: '基地核心，生产工程车。失去所有建筑即战败。',
+    gridRange: 7,
+    desc: '基地核心，生产工程车并提供基础供电范围。失去所有建筑即战败。',
   },
   power: {
     cn: '发 电 厂', en: 'POWER PLANT', cost: 300, hp: 400, power: +100,
     fw: 2, fh: 2, sight: 4, sprite: 'bld_power', buildable: true, hotkey: 'Q',
-    desc: '提供 100 电力。电力不足时生产减速、雷达与炮塔失效。',
+    gridRange: 9,
+    desc: '提供 100 电力与 9 格供电范围。高级设施必须建在电网内。',
   },
   refinery: {
     cn: '矿石精炼厂', en: 'ORE REFINERY', cost: 1400, hp: 900, power: -30,
@@ -60,8 +73,8 @@ export const BUILDINGS = {
   radar: {
     cn: '雷 达 站', en: 'RADAR DOME', cost: 1000, hp: 700, power: -40,
     fw: 2, fh: 2, sight: 8, sprite: 'bld_radar', buildable: true, hotkey: 'T',
-    prereq: ['refinery'],
-    desc: '启用小地图雷达，并解锁重型科技。',
+    prereq: ['refinery'], needsGrid: true,
+    desc: '启用小地图雷达，并解锁重型科技。需在供电范围内。',
   },
   turret: {
     cn: '防 御 炮 塔', en: 'GUN TURRET', cost: 500, hp: 450, power: -20,
@@ -72,20 +85,32 @@ export const BUILDINGS = {
   repair: {
     cn: '维 修 平 台', en: 'REPAIR PLATFORM', cost: 600, hp: 400, power: -15,
     fw: 1, fh: 1, sight: 3, sprite: 'bld_repair', buildable: true, hotkey: 'U',
-    prereq: ['factory'], repairAura: { range: 105, rate: 9 },
-    desc: '自动修理附近的友方载具（消耗资金）。',
+    prereq: ['factory'], repairAura: { range: 105, rate: 9 }, needsGrid: true,
+    desc: '自动修理附近的友方机械单位（消耗资金）。需在供电范围内。',
   },
   tesla: {
     cn: '特 斯 拉 塔', en: 'TESLA TOWER', cost: 1200, hp: 500, power: -50,
     fw: 1, fh: 1, sight: 7.5, sprite: 'bld_tesla', buildable: true, hotkey: 'I',
-    prereq: ['radar'], weapon: 'teslaZap',
-    desc: '链式闪电防御塔，无视护甲。断电时完全失效。',
+    prereq: ['radar'], weapon: 'teslaZap', needsGrid: true,
+    desc: '链式闪电防御塔，对生物单位加伤。断电或脱网时完全失效。',
   },
   silo: {
     cn: '导 弹 井', en: 'MISSILE SILO', cost: 2500, hp: 900, power: -75,
     fw: 2, fh: 2, sight: 4, sprite: 'bld_silo', buildable: true, hotkey: 'O',
-    prereq: ['radar'], superweapon: { charge: 240, dmg: 950, splash: 130 }, unique: true,
-    desc: '战略导弹：充能 4 分钟后可打击全图任意位置。每方限一座。',
+    prereq: ['radar'], superweapon: { charge: 240, dmg: 950, splash: 130 }, unique: true, needsGrid: true,
+    desc: '战略导弹：充能后可打击全图任意位置。每方限一座，需在电网内。',
+  },
+  shield: {
+    cn: '护 盾 生 成 器', en: 'SHIELD GENERATOR', cost: 1600, hp: 500, power: -60,
+    fw: 2, fh: 2, sight: 4, sprite: 'bld_shield', buildable: true, hotkey: 'P',
+    prereq: ['radar'], needsGrid: true,
+    shieldAura: { range: 150, frac: 0.32, regenDelay: 9, regenRate: 0.055 },
+    desc: '为范围内友方建筑生成 32% 护盾层，脱战后缓慢再生。需在电网内。',
+  },
+  wall: {
+    cn: '城 墙', en: 'FORTIFIED WALL', cost: 60, hp: 1100, power: 0,
+    fw: 1, fh: 1, sight: 1, sprite: 'bld_wall', buildable: true, hotkey: 'J', wall: true,
+    desc: '重型防御墙段。放置时按住拖动可连排铺设。',
   },
 };
 
@@ -99,13 +124,13 @@ export const UNITS = {
   rifle: {
     cn: '步 枪 兵', en: 'RIFLEMAN', cost: 120, hp: 60, speed: 46, turn: 12,
     sight: 4.5, armor: 'inf', weapon: 'rifleMG', r: 5, sprite: 'unit_rifle',
-    factory: 'barracks', hotkey: 'Q', kind: 'inf',
-    desc: '廉价主力步兵，克制敌方步兵。',
+    factory: 'barracks', hotkey: 'Q', kind: 'inf', organic: true,
+    desc: '廉价主力步兵，克制敌方步兵。可操作野战炮、乘坐运兵艇。',
   },
   rocket: {
     cn: '火 箭 兵', en: 'ROCKETEER', cost: 300, hp: 55, speed: 40, turn: 12,
     sight: 5, armor: 'inf', weapon: 'rocket', r: 5, sprite: 'unit_rocket',
-    factory: 'barracks', hotkey: 'W', kind: 'inf',
+    factory: 'barracks', hotkey: 'W', kind: 'inf', organic: true,
     skill: { key: 'deploy', cn: '部 署', hk: 'F', toggle: true, rangeBonus: 1.3, desc: '架设发射位：射程 +1.3，无法移动' },
     desc: '反装甲步兵，克制载具与建筑。技能：部署 (F)。',
   },
@@ -143,6 +168,20 @@ export const UNITS = {
     factory: 'factory', hotkey: 'Y', kind: 'veh', prereqBld: ['radar'], minRange: 2.6,
     desc: '远程火箭齐射，攻城利器。脆弱且有最小射程——保护好它。',
   },
+  fieldgun: {
+    cn: '野 战 炮', en: 'FIELD GUN', cost: 700, hp: 330, speed: 26, turn: 1.7,
+    sight: 5.5, armor: 'light', weapon: 'fieldCannon', r: 12, sprite: 'unit_fieldgun',
+    factory: 'factory', hotkey: 'U', kind: 'veh', minRange: 1.2,
+    crewed: { max: 2, fireNeed: 1, moveNeed: 2 },
+    desc: '牵引重炮：1 名步兵操作即可开火，2 名可推行转移。空炮可被任意步兵接管——包括敌人。',
+  },
+  hovercraft: {
+    cn: '气 垫 运 兵 艇', en: 'HOVERCRAFT', cost: 900, hp: 430, speed: 96, turn: 3.0,
+    sight: 5, armor: 'light', weapon: null, r: 14, sprite: 'unit_hovercraft',
+    factory: 'factory', hotkey: 'I', kind: 'veh', amphibious: true,
+    transport: { cap: 12 },
+    desc: '水陆两栖运兵艇：可载 12 名步兵横渡水域，开辟奇袭航线。',
+  },
 };
 
 export const ECON = {
@@ -163,7 +202,7 @@ export const ECON = {
   lowPowerRofFactor: 0.55,
 };
 
-export const BUILD_TIME = cost => 1.2 + cost / 300; // seconds
+export const BUILD_TIME = cost => (1.2 + cost / 300) * paceMult.build; // seconds
 
 export const DIFFICULTY = {
   easy:   { cn: '侦察兵', aiCredits: 5000, trickle: 0,  firstWave: 300, waveEvery: 185, waveScale: 0.7, income: 0.8 },

@@ -1,12 +1,13 @@
 // RED HORIZON — enemy commander: economy, base building, waves, defense.
 
 import { TILE, DT, dist2, clamp } from '../engine/core.js';
-import { UNITS, BUILDINGS, BUILD_TIME, ECON, ENEMY, PLAYER } from './data.js';
+import { UNITS, BUILDINGS, BUILD_TIME, ECON, ENEMY, PLAYER, pace } from './data.js';
 
 export class AIController {
   constructor(game, diff) {
     this.g = game;
-    this.diff = diff;
+    // epic pace stretches the assault timetable
+    this.diff = { ...diff, firstWave: diff.firstWave * pace().wave, waveEvery: diff.waveEvery * pace().wave };
     this.me = ENEMY;
     this.buildJob = null;          // {key, t, total}
     this.unitJobs = new Map();     // buildingId -> {key, t, total}

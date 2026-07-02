@@ -5,8 +5,8 @@
 import { PLAYER } from '../game/data.js';
 import { fmtTime } from '../engine/core.js';
 
-// engineer build menu (command card) — order maps to hotkeys Q W E R T Y U I O
-export const BUILD_MENU = ['power', 'refinery', 'barracks', 'factory', 'radar', 'turret', 'repair', 'tesla', 'silo'];
+// engineer build menu (command card) — order maps to hotkeys Q W E R T Y U I O P J
+export const BUILD_MENU = ['power', 'refinery', 'barracks', 'factory', 'radar', 'turret', 'repair', 'tesla', 'silo', 'shield', 'wall'];
 
 export class Sidebar {
   constructor(game, audio) {

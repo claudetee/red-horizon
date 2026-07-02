@@ -364,7 +364,7 @@ body { font-family: var(--font-cn); color: var(--txt); user-select: none; -webki
   display: grid; grid-template-columns: repeat(4, 50px); grid-auto-rows: 46px;
   gap: 6px; align-content: center; min-width: 230px; justify-content: end;
 }
-#cb-cmds:has(.cbtn.bld) { grid-template-columns: repeat(5, 52px); grid-auto-rows: 46px; }
+#cb-cmds:has(.cbtn.bld) { grid-template-columns: repeat(4, 52px); grid-auto-rows: 46px; }
 .cbtn {
   position: relative; border: 2px solid var(--edge); color: var(--txt);
   background: linear-gradient(180deg, #2a3444, #1a212c 55%, #141a23);
