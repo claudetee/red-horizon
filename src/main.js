@@ -184,6 +184,8 @@ $('set-eva').addEventListener('change', e => { settings.eva = e.target.checked; 
 $('set-crt').addEventListener('change', e => { settings.crt = e.target.checked; applySettings(); saveSettings(); });
 $('set-edge').addEventListener('change', e => { settings.edge = e.target.checked; applySettings(); saveSettings(); });
 
+$('app').addEventListener('contextmenu', e => e.preventDefault());
+
 // pause on Esc handled by hud; global Esc on pause screen resumes
 window.addEventListener('keydown', e => {
   if (e.code === 'Escape' && game && game.paused && !$('screen-pause').classList.contains('hidden')) {
