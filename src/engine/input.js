@@ -68,10 +68,11 @@ export class CameraRig {
     const sp = this.SPEED * dt / cam.zoom;
     let dx = 0, dy = 0;
     const k = this.keys;
-    if (k.has('ArrowLeft') || k.has('KeyA')) dx -= 1;
-    if (k.has('ArrowRight') || k.has('KeyD')) dx += 1;
-    if (k.has('ArrowUp') || k.has('KeyW')) dy -= 1;
-    if (k.has('ArrowDown') || k.has('KeyS') && !k.has('ShiftLeft')) dy += 1;
+    // arrows only — WASD collides with A(attack-move)/S(stop)/QWERTY production hotkeys
+    if (k.has('ArrowLeft')) dx -= 1;
+    if (k.has('ArrowRight')) dx += 1;
+    if (k.has('ArrowUp')) dy -= 1;
+    if (k.has('ArrowDown')) dy += 1;
     // edge scroll (only after a real mouse move inside the viewport)
     if (this.edgeScroll && this.mouse.inside && this.mouse.moved && !this.panning && document.hasFocus()) {
       const vw = this.viewport.clientWidth, vh = this.viewport.clientHeight;

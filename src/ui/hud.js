@@ -154,6 +154,7 @@ export class HUD {
         }
         this.mouse.down = true;
         this.mouse.downX = this.mouse.x; this.mouse.downY = this.mouse.y;
+        this.mouse.downWx = this.mouse.wx; this.mouse.downWy = this.mouse.wy;  // world-anchored box origin
         this.mouse.dragging = false;
       }
       if (e.button === 2) {
@@ -195,10 +196,9 @@ export class HUD {
       this.mouse.down = false;
       const g = this.g;
       if (this.mouse.dragging) {
-        // box select
-        const a = this.rig.screenToWorld(this.mouse.downX, this.mouse.downY);
+        // box select (origin anchored in world space so camera scroll doesn't drag it)
         const b = this.rig.screenToWorld(this.mouse.x, this.mouse.y);
-        const units = g.unitsInRect(a.x, a.y, b.x, b.y);
+        const units = g.unitsInRect(this.mouse.downWx, this.mouse.downWy, b.x, b.y);
         if (!e.shiftKey) g.selection.clear();
         for (const u of units) g.selection.add(u);
         if (units.length) this.audio.sfx('click');
@@ -302,7 +302,8 @@ export class HUD {
     window.addEventListener('keydown', e => {
       if (!this.enabled) return;
       const g = this.g;
-      if (document.querySelector('.screen:not(.hidden):not(#screen-loading)') && e.code !== 'Escape') return;
+      // overlay screens own all keys (main.js handles Escape there) — never double-handle
+      if (document.querySelector('.screen:not(.hidden):not(#screen-loading)')) return;
       switch (e.code) {
         case 'KeyA':
           if (!e.ctrlKey && !e.metaKey && this.selectedUnits().length) { this.attackArmed = true; }
@@ -337,8 +338,11 @@ export class HUD {
             if (n >= 1 && n <= 9) {
               if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
-                g.groups[n] = this.selectedUnits().map(u => u.id);
-                this.banner(`编队 ${n} 已设定`, 'good');
+                const sel = this.selectedUnits();
+                if (sel.length) {
+                  g.groups[n] = sel.map(u => u.id);
+                  this.banner(`编队 ${n} 已设定`, 'good');
+                }
               } else {
                 const ids = g.groups[n] || [];
                 const units = ids.map(id => g.byId.get(id)).filter(u => u && u.hp > 0);
@@ -522,8 +526,10 @@ export class HUD {
   // drag box + extra world-space UI, called inside game.render
   drawWorldUI(ctx) {
     if (this.mouse.dragging) {
-      const x = Math.min(this.mouse.downX, this.mouse.x), y = Math.min(this.mouse.downY, this.mouse.y);
-      const w = Math.abs(this.mouse.x - this.mouse.downX), h = Math.abs(this.mouse.y - this.mouse.downY);
+      const cam = this.g.cam;
+      const sx = (this.mouse.downWx - cam.x) * cam.zoom, sy = (this.mouse.downWy - cam.y) * cam.zoom;
+      const x = Math.min(sx, this.mouse.x), y = Math.min(sy, this.mouse.y);
+      const w = Math.abs(this.mouse.x - sx), h = Math.abs(this.mouse.y - sy);
       ctx.strokeStyle = 'rgba(53,232,216,0.9)';
       ctx.lineWidth = 1;
       ctx.strokeRect(x + .5, y + .5, w, h);

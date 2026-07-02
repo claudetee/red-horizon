@@ -134,6 +134,11 @@ export class AIController {
 
   manageUnits() {
     const g = this.g;
+    // drop production jobs whose factory died (money already spent — that's war)
+    for (const [bid] of this.unitJobs) {
+      const b = g.byId.get(bid);
+      if (!b || b.hp <= 0) this.unitJobs.delete(bid);
+    }
     for (const b of g.buildings) {
       if (b.owner !== this.me || b.hp <= 0 || b.state !== 'active' || !b.d.produces) continue;
       let job = this.unitJobs.get(b.id);
@@ -160,6 +165,12 @@ export class AIController {
     const g = this.g;
     this.waveT -= DT;
     const mil = this.military();
+    // release surviving attackers that finished their push so they rejoin the pool
+    if ((g.tick % 60) === 0) {
+      for (const u of mil) {
+        if (this.attackers.has(u.id) && u.state === 'idle') this.attackers.delete(u.id);
+      }
+    }
     // rally fresh units near base front
     if ((g.tick % 45) === 0) {
       const base = this.base();

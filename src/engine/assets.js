@@ -94,6 +94,7 @@ function makeDecals() {
 
 export async function loadAssets(onProgress) {
   const res = await fetch('assets/sprites.json');
+  if (!res.ok) throw new Error(`sprites.json HTTP ${res.status}`);
   store.meta = await res.json();
   const names = Object.keys(store.meta);
   let done = 0;

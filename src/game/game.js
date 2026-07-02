@@ -104,15 +104,15 @@ export class Game {
 
   spawnUnitFromFactory(b, key) {
     const door = b.dockPoint();
-    // find free spot near door
+    // spawn on a free cell just outside the factory door — never inside the footprint
     const taken = new Set();
     const cell = this.map.findFreeNear((door.x / TILE) | 0, (door.y / TILE) | 0, taken, 6);
-    const u = this.spawnUnit(key, b.owner, b.x, b.y + b.fh * TILE * 0.25);
+    const u = this.spawnUnit(key, b.owner, cell.cx * TILE + 16, cell.cy * TILE + 16);
     u.heading = Math.PI / 2;
+    u.prevX = u.x; u.prevY = u.y;
     this.combat.puff(door.x, door.y, 'dust', 6, 0.6);
     const rp = b.rallyPoint();
     if (u.harv) {
-      u.x = cell.cx * TILE + 16; u.y = cell.cy * TILE + 16;
       const c = this.map.findOreNear(cell.cx, cell.cy);
       if (c) u.orderHarvest(this, c.cx, c.cy);
     } else {
@@ -163,6 +163,8 @@ export class Game {
   }
 
   removeBuilding(b, sold = false) {
+    b.hp = 0;
+    b.dead = true;  // release anyone targeting a sold/removed building
     for (let y = b.cy; y < b.cy + b.fh; y++)
       for (let x = b.cx; x < b.cx + b.fw; x++)
         if (this.map.bld[y * this.map.w + x] === b.id) this.map.bld[y * this.map.w + x] = -1;
@@ -193,14 +195,23 @@ export class Game {
       this.lastEvent = { x: e.x, y: e.y };
       if (e.isBuilding) { this.eva('baseUnderAttack'); this.pingAt(e.x, e.y); }
       else if (e.harv) { this.eva('harvesterUnderAttack'); this.pingAt(e.x, e.y); }
-      else this.eva('unitsUnderAttack');
+      else {
+        this.eva('unitsUnderAttack');
+        if (this.time - (this._lastUnitPing || -9) > 2.5) { this._lastUnitPing = this.time; this.pingAt(e.x, e.y); }
+      }
     } else {
       this.ai.notifyDamage(e, attacker);
     }
   }
 
   addHusk(u) {
-    const img = sprTeam(u.d.sprite, u.owner);
+    const src = sprTeam(u.d.sprite, u.owner);
+    // bake the charred variant once — ctx.filter per frame is expensive
+    const img = document.createElement('canvas');
+    img.width = src.width; img.height = src.height;
+    const hctx = img.getContext('2d');
+    hctx.filter = 'brightness(0.35) saturate(0.4)';
+    hctx.drawImage(src, 0, 0);
     this.husks.push({ img, x: u.x, y: u.y, ang: u.heading + Math.PI / 2, ttl: 9, max: 9 });
     if (this.husks.length > 40) this.husks.shift();
   }
@@ -227,7 +238,12 @@ export class Game {
     this.power[owner] = { out, use };
     if (owner === PLAYER) {
       const lowNow = out < use;
-      if (lowNow && !lowBefore) { this.eva('lowPower'); }
+      const hasRadarBld = this.buildings.some(b => b.owner === PLAYER && b.key === 'radar' && b.hp > 0);
+      if (lowNow && !lowBefore) {
+        this.eva('lowPower');
+        if (hasRadarBld) this.eva('radarOffline');
+      }
+      if (!lowNow && lowBefore && hasRadarBld) this.eva('radarOnline');
       this.onSidebarDirty && this.onSidebarDirty();
     }
   }
@@ -277,6 +293,20 @@ export class Game {
     this.audio.sfx('click');
     this.onSidebarDirty && this.onSidebarDirty();
     return true;
+  }
+
+  // cancel the actively-building item (refund progress), promoting the next queued one
+  cancelActive(cat) {
+    const slot = this.prod[cat];
+    if (!slot) return;
+    this.addCredits(PLAYER, slot.spent);
+    const next = slot.queue && slot.queue.shift();
+    this.prod[cat] = next
+      ? { key: next, t: 0, total: BUILD_TIME(UNITS[next].cost), spent: 0, cost: UNITS[next].cost, queue: slot.queue, paused: false }
+      : null;
+    if (this.placing && cat === 'build') { this.placing = null; this.mode = 'normal'; }
+    this.eva('cancelled');
+    this.onSidebarDirty && this.onSidebarDirty();
   }
 
   cancelProduction(cat) {
@@ -485,7 +515,7 @@ export class Game {
     for (const u of this.units) this.hash.insert(u);
     for (const b of this.buildings) this.hash.insert(b);
 
-    this.pathfinder.processQueue(10);
+    this.pathfinder.processQueue(6);
 
     for (const u of this.units) u.update(this);
     this.separation();
@@ -603,7 +633,6 @@ export class Game {
       ctx.globalAlpha = 0.9 * k;
       ctx.translate((hk.x - cam.x) * z, (hk.y - cam.y) * z);
       ctx.rotate(hk.ang);
-      ctx.filter = 'brightness(0.35) saturate(0.4)';
       ctx.drawImage(hk.img, -hk.img.width * z / 2, -hk.img.height * z / 2, hk.img.width * z, hk.img.height * z);
       ctx.restore();
     }

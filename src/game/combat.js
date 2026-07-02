@@ -3,12 +3,26 @@
 import { TILE, DT, dist, dist2, angDiff, turnToward, clamp } from '../engine/core.js';
 import { WEAPONS } from './data.js';
 
+function radialTex(size, stops) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  for (const [o, col] of stops) g.addColorStop(o, col);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return c;
+}
+
 export class Combat {
   constructor(game) {
     this.game = game;
     this.projectiles = [];
     this.particles = [];
     this.tracers = [];
+    // pre-baked glow textures — per-frame createRadialGradient is a frame killer
+    this.texFlash = radialTex(64, [[0, 'rgba(255,240,190,1)'], [0.5, 'rgba(255,160,60,0.62)'], [1, 'rgba(255,120,40,0)']]);
+    this.texFire = radialTex(64, [[0, 'rgba(255,205,80,0.92)'], [0.5, 'rgba(255,120,40,0.55)'], [1, 'rgba(200,60,20,0)']]);
   }
 
   // ---------- firing ----------
@@ -202,23 +216,18 @@ export class Combat {
         case 'flash': {
           ctx.globalCompositeOperation = 'lighter';
           const r = q.size * z * (1.3 - k * 0.3);
-          const gr = ctx.createRadialGradient(px, py, 0, px, py, r);
-          gr.addColorStop(0, `rgba(255,240,190,${0.95 * k + 0.05})`);
-          gr.addColorStop(0.5, `rgba(255,160,60,${0.6 * k})`);
-          gr.addColorStop(1, 'rgba(255,120,40,0)');
-          ctx.fillStyle = gr;
-          ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+          ctx.globalAlpha = 0.9 * k + 0.1;
+          ctx.drawImage(this.texFlash, px - r, py - r, r * 2, r * 2);
+          ctx.globalAlpha = 1;
           ctx.globalCompositeOperation = 'source-over';
           break;
         }
         case 'fire': {
           ctx.globalCompositeOperation = 'lighter';
           const r = q.size * z * (0.5 + 0.5 * k);
-          const gr = ctx.createRadialGradient(px, py, 0, px, py, r);
-          gr.addColorStop(0, `rgba(255,${140 + 90 * k | 0},60,${0.85 * k})`);
-          gr.addColorStop(1, 'rgba(200,60,20,0)');
-          ctx.fillStyle = gr;
-          ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+          ctx.globalAlpha = 0.9 * k;
+          ctx.drawImage(this.texFire, px - r, py - r, r * 2, r * 2);
+          ctx.globalAlpha = 1;
           ctx.globalCompositeOperation = 'source-over';
           break;
         }

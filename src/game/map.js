@@ -182,6 +182,7 @@ export class GameMap {
     const { w, h } = this;
     const c = document.createElement('canvas');
     c.width = w * TILE; c.height = h * TILE;
+    this.oreDrawn = new Float32Array(w * h);
     this.oreCtx = c.getContext('2d');
     this.oreCtx.imageSmoothingEnabled = false;
     for (let cy = 0; cy < h; cy++)
@@ -195,6 +196,7 @@ export class GameMap {
     const ctx = this.oreCtx;
     ctx.clearRect(cx * TILE, cy * TILE, TILE, TILE);
     const amt = this.ore[cy * this.w + cx];
+    if (this.oreDrawn) this.oreDrawn[cy * this.w + cx] = amt;
     if (amt <= 0) return;
     const frac = amt / ECON.oreCellMax;
     const s = frac > 0.55 ? spr('prop_ore1') : spr('prop_ore2');
@@ -223,6 +225,10 @@ export class GameMap {
     for (let i = 0; i < n; i++) {
       if (this.ore[i] > 0 && this.ore[i] < ECON.oreCellMax) {
         this.ore[i] = Math.min(ECON.oreCellMax, this.ore[i] + ECON.oreRegen * dt);
+        // refresh the sprite once regrowth is visually meaningful
+        if (this.oreDrawn && this.ore[i] - this.oreDrawn[i] > 90) {
+          this.drawOreCell(i % this.w, (i / this.w) | 0);
+        }
       }
     }
   }

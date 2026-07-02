@@ -58,6 +58,8 @@ function newGame(difficulty) {
   const seed = params.has('seed') ? Number(params.get('seed')) : ((Math.random() * 1e9) | 0);
   game = new Game(cv, audio, { difficulty, seed, debug: DEBUG });
   audio.game = game;
+  audio.combatHeat = 0;
+  if ('speechSynthesis' in window) { try { speechSynthesis.cancel(); } catch (e) {} }
   if (!rig) rig = new CameraRig(game, $('viewport'));
   else rig.setGame(game);
   rig.edgeScroll = settings.edge;
@@ -115,7 +117,7 @@ function loop(t) {
     acc += dtReal;
     while (acc >= DT) { game.combat.update(); acc -= DT; }
   }
-  rig && rig.update(dtReal);
+  if (rig && !game.paused && !game.over) rig.update(dtReal);
   const cv = $('game');
   const dpr = cv.__dpr || 1;
   const ctx = cv.getContext('2d');
@@ -126,6 +128,13 @@ function loop(t) {
 }
 
 // ---------------- boot ----------------
+window.addEventListener('error', e => {
+  const ls = $('screen-loading');
+  if (ls && !ls.classList.contains('hidden')) {
+    $('loadtext').textContent = '加载出错：' + (e.message || '未知错误') + ' — 请刷新重试';
+  }
+});
+
 async function boot() {
   showScreen('loading');
   const tipEl = $('loadtext');

@@ -115,8 +115,16 @@ export class Sidebar {
     const g = this.g;
     const cat = g.catOf(key);
     const slot = g.prod[cat];
-    if (slot && (slot.key === key || (slot.queue || []).includes(key))) {
-      g.cancelProduction(cat);
+    if (!slot) return;
+    // cancel the clicked item specifically: queued copy first, then the active build
+    if (slot.queue && slot.queue.includes(key)) {
+      slot.queue.splice(slot.queue.lastIndexOf(key), 1);
+      this.audio.sfx('click');
+      g.onSidebarDirty && g.onSidebarDirty();
+      return;
+    }
+    if (slot.key === key) {
+      g.cancelActive(cat);
       this.audio.sfx('click');
     }
   }

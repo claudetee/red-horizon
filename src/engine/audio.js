@@ -59,8 +59,9 @@ export class AudioSys {
     let vol = opts.vol ?? 1, pan = 0;
     if (this.game && opts.x !== undefined) {
       const cam = this.game.cam;
-      const vw = this.game.canvas.width / (window.devicePixelRatio || 1);
-      const vh = this.game.canvas.height / (window.devicePixelRatio || 1);
+      const dpr = this.game.canvas.__dpr || 1;
+      const vw = this.game.canvas.width / dpr;
+      const vh = this.game.canvas.height / dpr;
       const cx = cam.x + vw / cam.zoom / 2, cy = cam.y + vh / cam.zoom / 2;
       const dx = opts.x - cx, dy = opts.y - cy;
       const d = Math.hypot(dx, dy);

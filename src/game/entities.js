@@ -41,24 +41,32 @@ export class Unit {
   // -------- orders --------
   orderMove(g, x, y, silent) {
     this.state = 'move'; this.target = null; this.amPos = null; this.guardMode = false;
+    this.resumeAM = null; this.attackAnchor = null;
     this.requestPathTo(g, x, y);
     if (!silent && this.owner === PLAYER) g.audio.ack();
   }
   orderAttack(g, t) {
     this.state = 'attack'; this.target = t; this.amPos = null;
+    this.resumeAM = null;
+    this.attackAnchor = { x: this.x, y: this.y };
     this.path = null; this.repathT = 0;
     if (this.owner === PLAYER) g.audio.ack(true);
   }
   orderAttackMove(g, x, y) {
     this.state = 'attackMove'; this.amPos = { x, y }; this.target = null; this.guardMode = false;
+    this.resumeAM = null; this.attackAnchor = null;
     this.requestPathTo(g, x, y);
     if (this.owner === PLAYER) g.audio.ack(true);
   }
   orderStop(g) {
     this.state = 'idle'; this.path = null; this.target = null; this.amPos = null;
+    this.resumeAM = null; this.attackAnchor = null;
     if (this.harv) this.harv.phase = 'idle';
   }
-  orderGuard() { this.guardMode = true; this.state = 'idle'; this.path = null; this.target = null; }
+  orderGuard() {
+    this.guardMode = true; this.state = 'idle'; this.path = null; this.target = null;
+    this.resumeAM = null; this.attackAnchor = { x: this.x, y: this.y };
+  }
   orderHarvest(g, cx, cy) {
     if (!this.harv) return;
     this.state = 'harvest';
@@ -82,16 +90,20 @@ export class Unit {
 
   // -------- per-tick update --------
   update(g) {
+    if (this.hp <= 0 || this.dead) return;
     this.prevX = this.x; this.prevY = this.y;
     if (this.flash > 0) this.flash -= DT;
     if (this.cool > 0) this.cool -= DT;
     if (this.turret && this.turret.recoil > 0) this.turret.recoil -= 14 * DT;
 
-    // burst continuation
+    // burst continuation (re-check range before releasing the leftover shot)
     if (this.burstLeft > 0) {
       this.burstT -= DT;
-      if (this.burstT <= 0 && this.target && this.target.hp > 0) {
-        this.fireAt(g, this.target);
+      if (this.burstT <= 0) {
+        const t = this.target;
+        if (t && t.hp > 0 && this.w && dist(this.x, this.y, t.x, t.y) <= this.w.range * TILE * 1.35) {
+          this.fireAt(g, t);
+        } else this.burstLeft = 0;
       }
     }
 
@@ -131,7 +143,7 @@ export class Unit {
 
   updateAttack(g) {
     const t = this.target;
-    if (!t || t.hp <= 0) {
+    if (!t || t.hp <= 0 || t.dead) {
       this.target = null;
       if (this.resumeAM) {
         const r = this.resumeAM; this.resumeAM = null;
@@ -139,11 +151,28 @@ export class Unit {
       } else this.state = 'idle';
       return;
     }
+    // drop targets that slipped into the fog (player units don't wallhack)
+    if (this.owner === PLAYER && !t.isBuilding && !g.fog.isVisiblePx(t.x, t.y)) {
+      this.target = null;
+      if (this.resumeAM) { const r = this.resumeAM; this.resumeAM = null; this.orderAttackMove(g, r.x, r.y); }
+      else this.state = 'idle';
+      return;
+    }
     const rr = t.isBuilding ? Math.max(t.fw, t.fh) * TILE * 0.42 : 0;
     const rangePx = this.w.range * TILE + rr;
     const d = dist(this.x, this.y, t.x, t.y);
     if (d > rangePx) {
-      if (this.guardMode) return; // hold position
+      if (this.guardMode) {
+        // guards don't chase — and drop unreachable locks so they stay responsive
+        this.target = null;
+        return;
+      }
+      // chase leash: don't cross the map after one buggy
+      if (this.attackAnchor && dist(this.attackAnchor.x, this.attackAnchor.y, this.x, this.y) > 10 * TILE) {
+        this.target = null; this.attackAnchor = null; this.state = 'idle';
+        this.path = null;
+        return;
+      }
       this.repathT -= DT;
       if (this.repathT <= 0) {
         this.requestPathTo(g, t.x, t.y);
@@ -187,10 +216,11 @@ export class Unit {
   moveAlong(g) {
     if (this.pendingPath) return false;
     if (!this.path || this.pathIdx >= this.path.length) {
-      // final approach to exact dest point
+      // final approach to exact dest point; give up if the way is physically blocked
       const d = dist(this.x, this.y, this.destX, this.destY);
       if (d > 6 && this.path) {
-        this.stepToward(g, this.destX, this.destY);
+        const moved = this.stepToward(g, this.destX, this.destY);
+        if (!moved) { this.path = null; return true; }
         return false;
       }
       this.path = null;
@@ -225,13 +255,19 @@ export class Unit {
       const step = this.d.speed * this.speedJit * f * DT;
       const nx = this.x + Math.cos(this.heading) * step;
       const ny = this.y + Math.sin(this.heading) * step;
-      this.tryMove(g, nx, ny);
-      if (this.d.kind !== 'inf' && (g.tick & 7) === 0 && g.rng() < 0.3) g.combat.dust(this.x - Math.cos(this.heading) * this.d.r, this.y - Math.sin(this.heading) * this.d.r);
+      const moved = this.tryMove(g, nx, ny);
+      if (moved && this.d.kind !== 'inf' && (g.tick & 7) === 0 && g.rng() < 0.3) g.combat.dust(this.x - Math.cos(this.heading) * this.d.r, this.y - Math.sin(this.heading) * this.d.r);
+      return moved;
     }
+    return true; // still rotating toward heading — counts as progress
   }
 
   tryMove(g, nx, ny) {
     const m = g.map;
+    // escape rule: if we're standing inside a blocked cell (e.g. just left the factory
+    // door), any movement is allowed so we can walk out instead of being trapped.
+    const ccx = clamp((this.x / TILE) | 0, 0, m.w - 1), ccy = clamp((this.y / TILE) | 0, 0, m.h - 1);
+    if (!m.isPassable(ccx, ccy)) { this.x = nx; this.y = ny; return true; }
     const cx = clamp((nx / TILE) | 0, 0, m.w - 1), cy = clamp((ny / TILE) | 0, 0, m.h - 1);
     if (m.isPassable(cx, cy)) { this.x = nx; this.y = ny; return true; }
     // slide along axes
@@ -480,6 +516,7 @@ export class Building {
   }
 
   update(g) {
+    if (this.dead) return;
     if (this.flash > 0) this.flash -= DT;
     if (this.state === 'rising') {
       this.rise += DT / 1.15;
