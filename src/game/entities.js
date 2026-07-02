@@ -2,10 +2,24 @@
 
 import { TILE, DT, dist, dist2, angDiff, turnToward, clamp, lerp } from '../engine/core.js';
 import { sprTeam, spr, pivotOf } from '../engine/assets.js';
-import { UNITS, BUILDINGS, WEAPONS, ECON, PLAYER, TEAM_COLORS } from './data.js';
+import { UNITS, BUILDINGS, WEAPONS, ECON, BUILD_TIME, PLAYER, TEAM_COLORS } from './data.js';
 
 let NEXT_ID = 1;
 export const resetIds = () => { NEXT_ID = 1; };
+
+// RA2-style segmented health bar
+function drawSegBar(ctx, bx, by, bw, bh, frac) {
+  ctx.fillStyle = 'rgba(6,8,10,0.85)';
+  ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+  const seg = 5, gap = 1;
+  const n = Math.max(3, Math.floor(bw / (seg + gap)));
+  const lit = Math.ceil(frac * n - 0.001);
+  const col = frac > 0.5 ? '#35e85f' : frac > 0.25 ? '#e8c22e' : '#f24d3a';
+  for (let i = 0; i < n; i++) {
+    ctx.fillStyle = i < lit ? col : '#232a1a';
+    ctx.fillRect(bx + i * (seg + gap), by, seg, bh);
+  }
+}
 
 // ============================== UNIT ==============================
 
@@ -75,6 +89,15 @@ export class Unit {
     this.requestPathTo(g, cx * TILE + 16, cy * TILE + 16);
     if (this.owner === PLAYER) g.audio.ack();
   }
+  orderBuild(g, site, silent) {
+    if (!this.d.builder || !site || site.dead) return;
+    this.state = 'build';
+    this.buildSite = site;
+    this.target = null; this.amPos = null; this.resumeAM = null; this.guardMode = false;
+    const dp = site.dockPoint();
+    this.requestPathTo(g, dp.x, dp.y);
+    if (!silent && this.owner === PLAYER) g.audio.ack();
+  }
 
   requestPathTo(g, x, y) {
     this.destX = x; this.destY = y;
@@ -123,6 +146,7 @@ export class Unit {
       }
       case 'attack': this.updateAttack(g); break;
       case 'harvest': this.updateHarvest(g); break;
+      case 'build': this.updateBuild(g); break;
       case 'idle':
       default:
         this.acquireMaybe(g, false);
@@ -359,6 +383,56 @@ export class Unit {
     }
   }
 
+  // -------- construction / repair (engineer trucks) --------
+  updateBuild(g) {
+    const s = this.buildSite;
+    const invalid = !s || s.dead || (s.state !== 'site' && s.hp >= s.maxHp);
+    if (invalid) {
+      this.buildSite = null;
+      // auto-continue on a nearby unfinished site
+      let best = null, bd = Infinity;
+      for (const b of g.buildings) {
+        if (b.owner !== this.owner || b.state !== 'site' || b.dead) continue;
+        const d2v = dist2(this.x, this.y, b.x, b.y);
+        if (d2v < bd && d2v < (9 * TILE) ** 2) { bd = d2v; best = b; }
+      }
+      if (best) { this.orderBuild(g, best, true); return; }
+      this.state = 'idle';
+      return;
+    }
+    const reach = Math.max(s.fw, s.fh) * TILE * 0.5 + ECON.buildReach;
+    const d = dist(this.x, this.y, s.x, s.y);
+    if (d > reach) {
+      this.repathT -= DT;
+      if ((!this.path && !this.pendingPath) || this.repathT <= 0) {
+        const dp = s.dockPoint();
+        this.requestPathTo(g, dp.x, dp.y);
+        this.repathT = 1.2;
+      }
+      this.moveAlong(g);
+      return;
+    }
+    // on site: work
+    this.path = null;
+    const want = Math.atan2(s.y - this.y, s.x - this.x);
+    this.heading = turnToward(this.heading, want, this.d.turn * DT);
+    if (s.state === 'site') {
+      s.buildersNow++;
+      if ((g.tick + this.id) % 8 === 0) {
+        g.combat.spark(s.x + (g.rng() - .5) * s.fw * TILE * 0.6, s.y + (g.rng() - .5) * s.fh * TILE * 0.5, 2);
+      }
+      if ((g.tick + this.id) % 34 === 0) g.audio.sfx('mine', { x: this.x, y: this.y, vol: 0.35 });
+    } else if (s.hp < s.maxHp) {
+      // field repair: same wrench economy as repair mode
+      const cost = (s.d.cost * ECON.repairCostFactor / s.maxHp) * ECON.repairRate * DT;
+      if (g.credits[this.owner] >= cost) {
+        g.credits[this.owner] -= cost;
+        s.hp = Math.min(s.maxHp, s.hp + ECON.repairRate * DT);
+        if ((g.tick + this.id) % 10 === 0) g.combat.spark(s.x + (g.rng() - .5) * 30, s.y + (g.rng() - .5) * 24, 1);
+      }
+    }
+  }
+
   goUnload(g) {
     const hv = this.harv;
     const ref = g.nearestBuilding(this.owner, 'refinery', this.x, this.y);
@@ -468,13 +542,9 @@ export class Unit {
       ctx.stroke();
     }
     if (sel || hovered || this.hp < this.maxHp) {
-      const bw = Math.max(20, this.d.r * 2.6) * z;
-      const bx = px - bw / 2, by = py - (this.selRadius + 7) * z;
-      const frac = this.hp / this.maxHp;
-      ctx.fillStyle = 'rgba(8,10,12,0.8)';
-      ctx.fillRect(bx - 1, by - 1, bw + 2, 4.5);
-      ctx.fillStyle = frac > 0.5 ? '#35e85f' : frac > 0.25 ? '#e8c22e' : '#f24d3a';
-      ctx.fillRect(bx, by, bw * frac, 2.5);
+      const bw = Math.max(22, this.d.r * 2.6) * z;
+      const bx = px - bw / 2, by = py - (this.selRadius + 8) * z;
+      drawSegBar(ctx, bx, by, bw, 3, this.hp / this.maxHp);
     }
     if (this.guardMode) {
       ctx.fillStyle = col.main;
@@ -497,9 +567,15 @@ export class Building {
     this.x = (cx + this.fw / 2) * TILE;
     this.y = (cy + this.fh / 2) * TILE;
     this.prevX = this.x; this.prevY = this.y;
-    this.hp = this.d.hp; this.maxHp = this.d.hp;
-    this.state = instant ? 'active' : 'rising';
+    this.maxHp = this.d.hp;
+    // instant = pre-placed (game start); otherwise a construction site awaiting engineers
+    this.state = instant ? 'active' : 'site';
+    this.hp = instant ? this.maxHp : this.maxHp * ECON.siteInitHpFrac;
     this.rise = instant ? 1 : 0;
+    this.progress = instant ? 1 : 0;
+    this.spent = 0;
+    this.buildersNow = 0;      // builders working this tick (units register before buildings update)
+    this.buildersShown = 0;    // last tick's count, for rendering
     this.turret = this.w ? { ang: -Math.PI / 2, recoil: 0 } : null;
     this.rally = null;
     this.repairing = false;
@@ -523,13 +599,36 @@ export class Building {
   update(g) {
     if (this.dead) return;
     if (this.flash > 0) this.flash -= DT;
+    if (this.state === 'site') {
+      const n = Math.min(ECON.builderMax, this.buildersNow);
+      this.buildersShown = n;
+      this.buildersNow = 0;
+      if (n > 0) {
+        const total = BUILD_TIME(this.d.cost);
+        const lowPow = g.power[this.owner].out < g.power[this.owner].use;
+        const mult = (1 + ECON.builderBoost * (n - 1)) * (lowPow ? ECON.lowPowerBuildFactor : 1) * (g.fastBuild && this.owner === 0 ? 8 : 1);
+        const delta = Math.min(1 - this.progress, (DT / total) * mult);
+        const need = Math.min(this.d.cost - this.spent, this.d.cost * delta);
+        if (g.credits[this.owner] >= need) {
+          g.credits[this.owner] -= need;
+          this.spent += need;
+          this.progress += delta;
+          this.hp = Math.min(this.maxHp * (ECON.siteInitHpFrac + (1 - ECON.siteInitHpFrac) * this.progress), this.hp + this.maxHp * delta * 1.2);
+          if (this.progress >= 1) {
+            this.state = 'rising';
+            this.rise = 0;
+          }
+        } else if (this.owner === 0) g.eva('insufficientFunds');
+      }
+      return;
+    }
     if (this.state === 'rising') {
       this.rise += DT / 1.15;
       if (this.rise >= 1) {
-        this.rise = 1; this.state = 'active';
+        this.rise = 1;
         g.combat.puff(this.x, this.y, 'dust', 10, 0.7);
         g.audio.sfx('place', { x: this.x, y: this.y });
-        g.recomputePower(this.owner);
+        this.activate(g);
       }
       return;
     }
@@ -583,7 +682,38 @@ export class Building {
     }
   }
 
+  // finished construction / instant placement — grants free units, radar callouts
+  activate(g, silent = false) {
+    this.state = 'active';
+    this.hp = this.maxHp;
+    this.progress = 1;
+    g.recomputePower(this.owner);
+    if (this.d.freeUnit) {
+      const dp = this.dockPoint();
+      const taken = new Set();
+      const cell = g.map.findFreeNear((dp.x / TILE) | 0, (dp.y / TILE) | 0, taken, 6);
+      const u = g.spawnUnit(this.d.freeUnit, this.owner, cell.cx * TILE + 16, cell.cy * TILE + 16);
+      if (u.harv) {
+        const c = g.map.findOreNear(cell.cx, cell.cy);
+        if (c) u.orderHarvest(g, c.cx, c.cy);
+      }
+    }
+    if (this.owner === 0 && !silent) {
+      g.eva('constructionComplete');
+      g.audio.sfx('ready');
+      if (this.key === 'radar') g.eva('radarOnline');
+      g.onSidebarDirty && g.onSidebarDirty();
+    }
+  }
+
   startSell(g) {
+    if (this.state === 'site') {
+      // cancelling a site refunds everything poured into it
+      g.addCredits(this.owner, this.spent);
+      g.audio.sfx('sell');
+      g.removeBuilding(this);
+      return;
+    }
     if (this.state !== 'active') return;
     const refund = Math.floor(this.d.cost * ECON.sellRefund * (this.hp / this.maxHp));
     g.addCredits(this.owner, refund);
@@ -620,6 +750,38 @@ export class Building {
     const px = (this.x - cam.x) * z, py = (this.y - cam.y) * z;
     const w = img.width * z, h = img.height * z;
     ctx.save();
+    if (this.state === 'site') {
+      // scaffold frame scaled to footprint
+      const frame = spr('site_frame');
+      const fwPx = this.fw * TILE * 1.16 * z;
+      const fhPx = frame.height * (fwPx / frame.width);
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(frame, px - fwPx / 2, py - fhPx / 2, fwPx, fhPx);
+      // target building ghost rising with progress
+      if (this.progress > 0.04) {
+        const revealH = h * this.progress;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.rect(px - w / 2 - 4, py + h / 2 - revealH, w + 8, revealH);
+        ctx.clip();
+        ctx.drawImage(img, px - w / 2, py - h / 2, w, h);
+      }
+      ctx.restore();
+      // progress bar (always visible on sites)
+      const bw = this.fw * TILE * 0.8 * z;
+      const bx = px - bw / 2, by = (this.cy * TILE - cam.y) * z - 6;
+      ctx.fillStyle = 'rgba(8,10,12,0.8)';
+      ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
+      ctx.fillStyle = this.buildersShown > 0 ? '#2ee6d6' : '#7d8a9a';
+      ctx.fillRect(bx, by, bw * this.progress, 4);
+      if (this.buildersShown > 1) {
+        ctx.fillStyle = '#ffe9a0';
+        ctx.font = `bold ${9 * z}px monospace`;
+        ctx.textAlign = 'left';
+        ctx.fillText('x' + this.buildersShown, bx + bw + 4, by + 5);
+      }
+      return;
+    }
     if (this.state === 'rising') {
       const k = this.rise;
       // rise from ground with clipping + construction flicker
@@ -685,14 +847,10 @@ export class Building {
       ctx.strokeRect((this.cx * TILE - cam.x) * z, (this.cy * TILE - cam.y) * z, this.fw * TILE * z, this.fh * TILE * z);
       ctx.setLineDash([]);
     }
-    if (sel || hovered || this.hp < this.maxHp) {
+    if ((sel || hovered || this.hp < this.maxHp) && this.state !== 'site') {
       const bw = this.fw * TILE * 0.8 * z;
-      const bx = px - bw / 2, by = (this.cy * TILE - cam.y) * z - 8;
-      const frac = this.hp / this.maxHp;
-      ctx.fillStyle = 'rgba(8,10,12,0.8)';
-      ctx.fillRect(bx - 1, by - 1, bw + 2, 5.5);
-      ctx.fillStyle = frac > 0.5 ? '#35e85f' : frac > 0.25 ? '#e8c22e' : '#f24d3a';
-      ctx.fillRect(bx, by, bw * frac, 3.5);
+      const bx = px - bw / 2, by = (this.cy * TILE - cam.y) * z - 9;
+      drawSegBar(ctx, bx, by, bw, 4, this.hp / this.maxHp);
     }
     if (this.repairing && (g.tick % 20) < 12) {
       ctx.fillStyle = '#e8b33a';

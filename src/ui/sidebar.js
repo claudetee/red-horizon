@@ -7,7 +7,7 @@ import { fmtTime } from '../engine/core.js';
 const TABS = {
   build: ['power', 'refinery', 'barracks', 'factory', 'radar', 'turret'],
   inf: ['rifle', 'rocket'],
-  veh: ['buggy', 'harvester', 'tank', 'heavy'],
+  veh: ['builder', 'buggy', 'harvester', 'tank', 'heavy'],
 };
 
 export class Sidebar {
@@ -135,11 +135,13 @@ export class Sidebar {
     const pre = (isB ? d.prereq : d.prereqBld) || [];
     const preTxt = pre.length ? `需要：${pre.map(p => BUILDINGS[p].cn.replace(/ /g, '')).join('、')}` : '';
     const met = this.g.prereqsMet(key);
+    const noBuilder = isB && !this.g.hasBuilder();
     this.tooltip.innerHTML = `
       <div class="tt-name">${d.cn.replace(/ /g, '')} <span style="color:#79879a;font-size:10px">${d.en}</span></div>
       <div class="tt-cost">$${d.cost}${isB && d.power ? ` · 电力 ${d.power > 0 ? '+' : ''}${d.power}` : ''}</div>
       <div class="tt-desc">${d.desc}</div>
-      ${preTxt && !met ? `<div class="tt-req">${preTxt}</div>` : ''}`;
+      ${preTxt && !met ? `<div class="tt-req">${preTxt}</div>` : ''}
+      ${noBuilder ? `<div class="tt-req">需要：工程车（战车页签 Q 生产）</div>` : ''}`;
     this.tooltip.classList.remove('hidden');
     const r = el.getBoundingClientRect();
     this.tooltip.style.left = (r.left - this.tooltip.offsetWidth - 10) + 'px';
@@ -175,7 +177,8 @@ export class Sidebar {
     for (const [key, it] of this.items) {
       const cat = g.catOf(key);
       const slot = g.prod[cat];
-      const met = g.prereqsMet(key);
+      let met = g.prereqsMet(key);
+      if (cat === 'build' && !g.hasBuilder()) met = false;
       it.el.classList.toggle('disabled', !met);
       const active = slot && slot.key === key;
       const queuedN = slot && slot.queue ? slot.queue.filter(k => k === key).length + (slot.key === key ? 1 : 0) : 0;

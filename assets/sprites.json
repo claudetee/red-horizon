@@ -251,5 +251,27 @@
    0.5,
    0.5
   ]
+ },
+ "unit_builder": {
+  "file": "assets/img/unit_builder.png",
+  "w": 24,
+  "h": 36,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "site_frame": {
+  "file": "assets/img/site_frame.png",
+  "w": 110,
+  "h": 103,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 3,
+   "fh": 3
+  }
  }
 }

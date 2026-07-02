@@ -74,8 +74,9 @@ export class Game {
     this.setupStart();
     this.ai = new AIController(this, this.diff);
     // opening guidance
-    this.delayed.push({ at: 45, fn: () => { this.onBanner && this.onBanner('指挥官，先建造发电厂 (Q) 与矿石精炼厂 (W)', 'good'); } });
-    this.delayed.push({ at: 240, fn: () => { this.onBanner && this.onBanner('矿石精炼厂附赠采矿车，经济就是火力', 'gold'); } });
+    this.delayed.push({ at: 45, fn: () => { this.onBanner && this.onBanner('指挥官，点击建筑面板开始施工 (B)——工程车会自动前往', 'good'); } });
+    this.delayed.push({ at: 240, fn: () => { this.onBanner && this.onBanner('多台工程车同修一处可以加速施工', 'gold'); } });
+    this.delayed.push({ at: 420, fn: () => { this.onBanner && this.onBanner('矿石精炼厂附赠采矿车，经济就是火力', 'gold'); } });
   }
 
   // ---------- setup ----------
@@ -86,6 +87,8 @@ export class Game {
     for (let i = 0; i < 2; i++) {
       this.spawnUnit('rifle', PLAYER, (ps.cx + 3 + i) * TILE, (ps.cy + 3) * TILE);
       this.spawnUnit('rifle', ENEMY, (es.cx - 3 - i) * TILE, (es.cy - 3) * TILE);
+      this.spawnUnit('builder', PLAYER, (ps.cx - 3 + i * 2) * TILE, (ps.cy + 3) * TILE);
+      this.spawnUnit('builder', ENEMY, (es.cx + 3 - i * 2) * TILE, (es.cy - 3) * TILE);
     }
     this.cam.x = ps.cx * TILE - 300;
     this.cam.y = ps.cy * TILE - 260;
@@ -150,16 +153,12 @@ export class Game {
       for (let x = cx; x < cx + b.fw; x++)
         this.map.bld[y * this.map.w + x] = b.id;
     this.stats[owner].built++;
-    if (instant) this.recomputePower(owner);
-    // refinery grants a free harvester
-    if (key === 'refinery') {
-      const dp = b.dockPoint();
-      const u = this.spawnUnit('harvester', owner, dp.x, dp.y + 8);
-      const c = this.map.findOreNear((dp.x / TILE) | 0, (dp.y / TILE) | 0);
-      if (c) u.orderHarvest(this, c.cx, c.cy);
-    }
-    if (owner === PLAYER && key === 'radar') this.eva('radarOnline');
+    if (instant) b.activate(this, true);
     return b;
+  }
+
+  hasBuilder(owner = PLAYER) {
+    return this.units.some(u => u.owner === owner && u.d.builder && u.hp > 0);
   }
 
   removeBuilding(b, sold = false) {
@@ -175,7 +174,10 @@ export class Game {
   }
 
   onEntityDied(e, attacker) {
-    if (attacker && attacker.owner !== e.owner) this.stats[attacker.owner].kills++;
+    if (attacker && attacker.owner !== e.owner) {
+      this.stats[attacker.owner].kills++;
+      attacker.kills = (attacker.kills || 0) + 1;
+    }
     this.stats[e.owner].lost++;
     this.selection.delete(e);
     if (e.isBuilding) {
@@ -276,20 +278,19 @@ export class Game {
     const cat = this.catOf(key);
     const cost = (BUILDINGS[key] || UNITS[key]).cost;
     if (!this.prereqsMet(key)) return false;
-    const slot = this.prod[cat];
     if (cat === 'build') {
-      if (slot) {
-        if (slot.ready && slot.key === key) { this.enterPlacement(key); return true; }
-        return false;
-      }
-      this.prod.build = { key, t: 0, total: BUILD_TIME(cost), spent: 0, cost, ready: false, paused: false };
-    } else {
-      if (slot) {
-        if (slot.queue.length < 8) { slot.queue.push(key); this.audio.sfx('click'); this.onSidebarDirty && this.onSidebarDirty(); return true; }
-        return false;
-      }
-      this.prod[cat] = { key, t: 0, total: BUILD_TIME(cost), spent: 0, cost, queue: [], paused: false };
+      // buildings are erected by engineer trucks on-site
+      if (!this.hasBuilder(PLAYER)) { this.eva('needBuilder'); return false; }
+      this.enterPlacement(key);
+      this.audio.sfx('click');
+      return true;
     }
+    const slot = this.prod[cat];
+    if (slot) {
+      if (slot.queue.length < 8) { slot.queue.push(key); this.audio.sfx('click'); this.onSidebarDirty && this.onSidebarDirty(); return true; }
+      return false;
+    }
+    this.prod[cat] = { key, t: 0, total: BUILD_TIME(cost), spent: 0, cost, queue: [], paused: false };
     this.audio.sfx('click');
     this.onSidebarDirty && this.onSidebarDirty();
     return true;
@@ -323,16 +324,13 @@ export class Game {
   updateProduction() {
     const lowPow = this.power[PLAYER].out < this.power[PLAYER].use;
     const speedF = (lowPow ? ECON.lowPowerBuildFactor : 1) * (this.fastBuild ? 8 : 1);
-    for (const cat of ['build', 'inf', 'veh']) {
+    for (const cat of ['inf', 'veh']) {
       const slot = this.prod[cat];
-      if (!slot || slot.ready) continue;
-      // factory for units must exist
-      if (cat !== 'build') {
-        const facKey = UNITS[slot.key].factory;
-        if (!this.buildings.some(b => b.owner === PLAYER && b.key === facKey && b.hp > 0 && b.state === 'active')) {
-          this.eva('onHold');
-          continue;
-        }
+      if (!slot) continue;
+      const facKey = UNITS[slot.key].factory;
+      if (!this.buildings.some(b => b.owner === PLAYER && b.key === facKey && b.hp > 0 && b.state === 'active')) {
+        this.eva('onHold');
+        continue;
       }
       const dtEff = DT * speedF;
       // never charge past the sticker price (final tick would overshoot)
@@ -343,18 +341,10 @@ export class Game {
         slot.t += dtEff;
       } else if ((this.tick % 60) === 0) this.eva('insufficientFunds');
       if (slot.t >= slot.total) {
-        if (cat === 'build') {
-          slot.ready = true;
-          this.eva('constructionComplete');
-          this.audio.sfx('ready');
-        } else {
-          // spawn from a matching factory
-          const facKey = UNITS[slot.key].factory;
-          const fac = this.buildings.find(b => b.owner === PLAYER && b.key === facKey && b.hp > 0 && b.state === 'active');
-          if (fac) this.spawnUnitFromFactory(fac, slot.key);
-          const next = slot.queue.shift();
-          this.prod[cat] = next ? { key: next, t: 0, total: BUILD_TIME(UNITS[next].cost), spent: 0, cost: UNITS[next].cost, queue: slot.queue, paused: false } : null;
-        }
+        const fac = this.buildings.find(b => b.owner === PLAYER && b.key === facKey && b.hp > 0 && b.state === 'active');
+        if (fac) this.spawnUnitFromFactory(fac, slot.key);
+        const next = slot.queue.shift();
+        this.prod[cat] = next ? { key: next, t: 0, total: BUILD_TIME(UNITS[next].cost), spent: 0, cost: UNITS[next].cost, queue: slot.queue, paused: false } : null;
         this.onSidebarDirty && this.onSidebarDirty();
       }
     }
@@ -368,11 +358,24 @@ export class Game {
   confirmPlacement(cx, cy) {
     if (!this.placing) return false;
     if (!this.canPlace(this.placing, cx, cy)) { this.eva('cannotBuildThere'); this.audio.sfx('deny'); return false; }
-    this.placeBuilding(this.placing, cx, cy, PLAYER);
+    const site = this.placeBuilding(this.placing, cx, cy, PLAYER);
     this.audio.sfx('place');
+    // dispatch engineers: selected ones first, else the nearest idle one
+    let crew = [...this.selection].filter(e => !e.isBuilding && e.d.builder && e.hp > 0);
+    if (!crew.length) {
+      let best = null, bd = Infinity;
+      for (const u of this.units) {
+        if (u.owner !== PLAYER || !u.d.builder || u.hp <= 0) continue;
+        const busy = u.state === 'build' && u.buildSite && u.buildSite.state === 'site';
+        const d = dist2(u.x, u.y, site.x, site.y) * (busy ? 4 : 1); // prefer idle crews
+        if (d < bd) { bd = d; best = u; }
+      }
+      if (best) crew = [best];
+    }
+    for (const u of crew) u.orderBuild(this, site, true);
+    if (crew.length) this.eva('building');
     this.placing = null;
     this.mode = 'normal';
-    this.prod.build = null;
     this.onSidebarDirty && this.onSidebarDirty();
     return true;
   }

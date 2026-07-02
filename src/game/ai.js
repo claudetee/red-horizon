@@ -32,7 +32,9 @@ export class AIController {
 
   countBld(key) { return this.g.buildings.filter(b => b.owner === this.me && b.key === key && b.hp > 0).length; }
   countUnit(key) { return this.g.units.filter(u => u.owner === this.me && u.key === key && u.hp > 0).length; }
-  military() { return this.g.units.filter(u => u.owner === this.me && u.hp > 0 && !u.d.harvester); }
+  military() { return this.g.units.filter(u => u.owner === this.me && u.hp > 0 && !u.d.harvester && !u.d.builder); }
+  builders() { return this.g.units.filter(u => u.owner === this.me && u.hp > 0 && u.d.builder); }
+  sites() { return this.g.buildings.filter(b => b.owner === this.me && b.state === 'site' && !b.dead); }
 
   manageEcon() {
     for (const u of this.g.units) {
@@ -63,22 +65,31 @@ export class AIController {
 
   manageBuild() {
     const g = this.g;
-    if (this.buildJob) {
-      const j = this.buildJob;
-      const lowPow = g.power[this.me].out < g.power[this.me].use;
-      j.t += DT * (lowPow ? ECON.lowPowerBuildFactor : 1) * this.diff.income;
-      if (j.t >= j.total) {
-        this.buildJob = null;
-        this.placeBuilding(j.key);
-      }
-      return;
+    if ((g.tick % 20) !== 0) return;
+    const crews = this.builders();
+    const sites = this.sites();
+    // keep every site staffed; spread free crews across sites
+    for (const s of sites) {
+      const working = crews.filter(u => u.buildSite === s && u.state === 'build');
+      if (working.length) continue;
+      const free = crews.find(u => u.state === 'idle' || (u.state === 'build' && (!u.buildSite || u.buildSite.dead || u.buildSite.state !== 'site')));
+      if (free) free.orderBuild(g, s, true);
     }
+    // extra idle crews pile onto the most complete site for the speed bonus
+    if (sites.length) {
+      for (const u of crews) {
+        if (u.state !== 'idle') continue;
+        const target = sites.reduce((a, b) => (a.progress > b.progress ? a : b));
+        u.orderBuild(g, target, true);
+      }
+    }
+    if (sites.length >= 2) return;      // at most two concurrent projects
+    if (!crews.length) return;          // manageUnits will train a new truck
     const want = this.desiredBuild();
     if (!want) return;
     const cost = BUILDINGS[want].cost;
-    if (g.credits[this.me] >= cost) {
-      g.credits[this.me] -= cost;
-      this.buildJob = { key: want, t: 0, total: BUILD_TIME(cost) };
+    if (g.credits[this.me] >= cost * 0.35 * this.diff.income) {
+      this.placeBuilding(want);
     }
   }
 
@@ -107,10 +118,10 @@ export class AIController {
       if (key === 'turret' && bestSpot) break;
     }
     if (bestSpot) {
-      g.placeBuilding(key, bestSpot.cx, bestSpot.cy, this.me);
-    } else {
-      // refund if nowhere to put it
-      g.credits[this.me] += BUILDINGS[key].cost * 0.9;
+      const site = g.placeBuilding(key, bestSpot.cx, bestSpot.cy, this.me);
+      const free = this.builders().find(u => u.state === 'idle')
+        || this.builders().find(u => u.state !== 'build');
+      if (free) free.orderBuild(g, site, true);
     }
   }
 
@@ -138,6 +149,23 @@ export class AIController {
     for (const [bid] of this.unitJobs) {
       const b = g.byId.get(bid);
       if (!b || b.hp <= 0) this.unitJobs.delete(bid);
+    }
+    // conyard replaces lost engineer trucks
+    for (const b of g.buildings) {
+      if (b.owner !== this.me || b.hp <= 0 || b.state !== 'active' || b.key !== 'conyard') continue;
+      let job = this.unitJobs.get(b.id);
+      if (job) {
+        job.t += DT * this.diff.income;
+        if (job.t >= job.total) {
+          this.unitJobs.delete(b.id);
+          g.spawnUnitFromFactory(b, job.key);
+        }
+        continue;
+      }
+      if (this.builders().length < 2 && g.credits[this.me] >= UNITS.builder.cost) {
+        g.credits[this.me] -= UNITS.builder.cost;
+        this.unitJobs.set(b.id, { key: 'builder', t: 0, total: BUILD_TIME(UNITS.builder.cost) });
+      }
     }
     for (const b of g.buildings) {
       if (b.owner !== this.me || b.hp <= 0 || b.state !== 'active' || !b.d.produces) continue;

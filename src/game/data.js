@@ -67,6 +67,12 @@ export const BUILDINGS = {
 };
 
 export const UNITS = {
+  builder: {
+    cn: '工 程 车', en: 'ENGINEER TRUCK', cost: 400, hp: 300, speed: 70, turn: 3.4,
+    sight: 4.5, armor: 'light', weapon: null, r: 11, sprite: 'unit_builder',
+    factory: 'conyard', hotkey: 'Q', kind: 'veh', builder: true,
+    desc: '建造与维修基地建筑。多台同修一处可大幅加速。',
+  },
   rifle: {
     cn: '步 枪 兵', en: 'RIFLEMAN', cost: 120, hp: 60, speed: 46, turn: 12,
     sight: 4.5, armor: 'inf', weapon: 'rifleMG', r: 5, sprite: 'unit_rifle',
@@ -82,33 +88,37 @@ export const UNITS = {
   buggy: {
     cn: '侦 察 车', en: 'SCOUT BUGGY', cost: 600, hp: 230, speed: 128, turn: 4.6,
     sight: 6.5, armor: 'light', weapon: 'buggyMG', r: 10, sprite: 'unit_buggy',
-    factory: 'factory', hotkey: 'E', kind: 'veh',
+    factory: 'factory', hotkey: 'W', kind: 'veh',
     desc: '高速侦察载具，机枪克制步兵。',
   },
   harvester: {
     cn: '采 矿 车', en: 'ORE HARVESTER', cost: 1200, hp: 650, speed: 62, turn: 3.2,
     sight: 4, armor: 'heavy', weapon: null, r: 13, sprite: 'unit_harvester',
-    factory: 'factory', hotkey: 'R', kind: 'veh', harvester: true,
+    factory: 'factory', hotkey: 'E', kind: 'veh', harvester: true,
     desc: '自动采集矿石并运回精炼厂。',
   },
   tank: {
     cn: '中 型 坦 克', en: 'MEDIUM TANK', cost: 900, hp: 430, speed: 74, turn: 2.9,
     sight: 5.5, armor: 'heavy', weapon: 'cannon', r: 11, sprite: 'unit_tank_hull',
     turretSprite: 'unit_tank_gun', turretTurn: 4.2,
-    factory: 'factory', hotkey: 'T', kind: 'veh',
+    factory: 'factory', hotkey: 'R', kind: 'veh',
     desc: '主战坦克，装甲对决的中坚。',
   },
   heavy: {
     cn: '猛 犸 重 坦', en: 'MAMMOTH TANK', cost: 1750, hp: 980, speed: 50, turn: 2.0,
     sight: 6, armor: 'heavy', weapon: 'twinCannon', r: 14, sprite: 'unit_heavy_hull',
     turretSprite: 'unit_heavy_gun', turretTurn: 3.2,
-    factory: 'factory', hotkey: 'Y', kind: 'veh', prereqBld: ['radar'],
+    factory: 'factory', hotkey: 'T', kind: 'veh', prereqBld: ['radar'],
     desc: '双管重型坦克，需要雷达站解锁。',
   },
 };
 
 export const ECON = {
   startCredits: 6000,
+  siteInitHpFrac: 0.1,     // construction site starts at 10% of final hp
+  builderBoost: 0.6,       // each extra builder on a site adds +60% speed
+  builderMax: 4,           // builders that can work one site simultaneously
+  buildReach: 46,          // px beyond footprint edge where a builder can work
   oreCellMax: 650,
   harvestCapacity: 700,
   harvestRate: 185,      // credits/sec while mining
@@ -147,6 +157,8 @@ export const EVA = {
   newOptions:           { t: '新建造选项', cls: 'good' },
   enemySighted:         { t: '发现敌军', cls: '' },
   cannotBuildThere:     { t: '无法在此建造', cls: '' },
+  needBuilder:          { t: '需要工程车', cls: '' },
+  building:             { t: '开始施工', cls: 'good' },
   needMoreOre:          { t: '矿脉枯竭，寻找新矿区', cls: '' },
   victory:              { t: '任务完成', cls: 'gold' },
   defeat:               { t: '任务失败', cls: '' },

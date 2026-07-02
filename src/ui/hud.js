@@ -1,8 +1,9 @@
 // RED HORIZON — HUD: mouse orders, selection, minimap, cursors, banners, screens.
 
 import { TILE, clamp, dist2, fmtTime } from '../engine/core.js';
-import { PLAYER, ENEMY, TEAM_COLORS, BUILDINGS } from '../game/data.js';
+import { PLAYER, ENEMY, TEAM_COLORS, BUILDINGS, UNITS, WEAPONS } from '../game/data.js';
 import { T_GRASS, T_DIRT, T_WATER, T_ROCK, T_TREE } from '../game/map.js';
+import { cameo } from '../engine/assets.js';
 
 function makeCursor(draw, hotX = 4, hotY = 4, size = 26) {
   const c = document.createElement('canvas');
@@ -31,6 +32,17 @@ export class HUD {
     this.mmCtx = this.minimap.getContext('2d');
     this.mmTerrain = null;
     this.banners = document.getElementById('banners');
+    this.cb = {
+      face: document.getElementById('cb-face'),
+      name: document.getElementById('cb-name'),
+      count: document.getElementById('cb-count'),
+      idle: document.getElementById('cb-idle'),
+      stats: document.getElementById('cb-stats'),
+      multi: document.getElementById('cb-multi'),
+      cmds: document.getElementById('cb-cmds'),
+    };
+    this.cbSig = '__init__';
+    this.cbFrame = 0;
 
     this.enabled = true;
     this.cursors = this.buildCursors();
@@ -279,6 +291,17 @@ export class HUD {
       this.audio.noteCombatUi?.();
       return;
     }
+    // engineers: right-click own site (or damaged building) = build / repair
+    if (hover && hover.owner === PLAYER && hover.isBuilding) {
+      const crews = units.filter(u => u.d.builder);
+      if (crews.length && (hover.state === 'site' || hover.hp < hover.maxHp)) {
+        for (const u of crews) u.orderBuild(g, hover, u !== crews[0]);
+        g.markers.push({ x: hover.x, y: hover.y, t: 0.6, type: 'move' });
+        const rest = units.filter(u => !u.d.builder);
+        if (rest.length) g.cmdMove(rest, this.mouse.wx, this.mouse.wy);
+        return;
+      }
+    }
     // ore? send harvesters
     const cx = (this.mouse.wx / TILE) | 0, cy = (this.mouse.wy / TILE) | 0;
     if (g.map.inB(cx, cy) && g.map.ore[cy * g.map.w + cx] > 0 && units.some(u => u.harv)) {
@@ -326,6 +349,8 @@ export class HUD {
         }
         case 'KeyX': this.setMode(g.mode === 'sell' ? 'normal' : 'sell'); break;
         case 'KeyC': this.setMode(g.mode === 'repair' ? 'normal' : 'repair'); break;
+        case 'KeyB': this.sidebar.setTab('build'); break;
+        case 'KeyV': this.autoHarvest(this.selectedUnits()); break;
         case 'Tab': e.preventDefault(); this.sidebar.cycleTab(); break;
         case 'Escape':
           if (g.mode !== 'normal') { this.setMode('normal'); g.placing = null; }
@@ -506,6 +531,21 @@ export class HUD {
     ctx.strokeStyle = 'rgba(255,255,255,0.8)';
     ctx.lineWidth = 1;
     ctx.strokeRect(g.cam.x / TILE * k, g.cam.y / TILE * k, vw, vh);
+
+    // radar sweep
+    const ang = (performance.now() / 2400) * Math.PI * 2;
+    ctx.save();
+    ctx.translate(S / 2, S / 2);
+    for (let i = 0; i < 8; i++) {
+      const a = ang - i * 0.045;
+      ctx.strokeStyle = `rgba(46,230,214,${0.20 * (1 - i / 8)})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * S, Math.sin(a) * S);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // ---------------- banners ----------------
@@ -518,11 +558,160 @@ export class HUD {
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 550); }, 2600);
   }
 
+  // ---------------- command bar (War3-style bottom panel) ----------------
+  updateCmdbar() {
+    const g = this.g;
+    for (const e of g.selection) if (e.hp <= 0 || e.dead) g.selection.delete(e);
+    const sel = [...g.selection];
+    const sig = sel.map(e => e.id).sort((a, b) => a - b).join(',') + '|' + g.mode;
+    this.cbFrame++;
+    if (sig === this.cbSig && this.cbFrame % 18 !== 0) return;
+    this.cbSig = sig;
+    const cb = this.cb;
+    const fctx = cb.face.getContext('2d');
+    fctx.imageSmoothingEnabled = false;
+    fctx.fillStyle = '#0b0f16';
+    fctx.fillRect(0, 0, cb.face.width, cb.face.height);
+
+    if (!sel.length) {
+      cb.idle.style.display = '';
+      cb.stats.style.display = 'none';
+      cb.multi.style.display = 'none';
+      cb.count.classList.add('hidden');
+      cb.name.textContent = '—';
+      cb.cmds.innerHTML = '';
+      return;
+    }
+    cb.idle.style.display = 'none';
+    const first = sel[0];
+    fctx.drawImage(cameo(first.d.sprite), 0, 0, cb.face.width, cb.face.height);
+    cb.name.textContent = first.d.cn.replace(/ /g, '');
+
+    if (sel.length === 1) {
+      cb.count.classList.add('hidden');
+      cb.multi.style.display = 'none';
+      cb.stats.style.display = 'grid';
+      const e = first;
+      const rows = [];
+      const hpCls = e.hp / e.maxHp > 0.5 ? '' : e.hp / e.maxHp > 0.25 ? 'gold' : 'red';
+      rows.push(['生命', `${Math.ceil(e.hp)}/${e.maxHp}`, hpCls]);
+      if (!e.isBuilding) {
+        const w = e.w;
+        rows.push(['攻击', w ? `${w.dmg}${w.burst > 1 ? '×' + w.burst : ''}` : '—']);
+        if (w) rows.push(['射程', String(w.range)]);
+        rows.push(['速度', String(e.d.speed)]);
+        if ((e.kills || 0) > 0) rows.push(['击杀', String(e.kills), 'gold']);
+        if (e.harv) rows.push(['载矿', `${Math.round(e.harv.load)}/700`, 'gold']);
+      } else if (e.state === 'site') {
+        rows.push(['施工', `${Math.round(e.progress * 100)}%`, 'gold']);
+        rows.push(['工程车', String(e.buildersShown)]);
+      } else {
+        if (e.d.power) rows.push(['电力', (e.d.power > 0 ? '+' : '') + e.d.power, e.d.power > 0 ? '' : 'gold']);
+        const low = g.power[PLAYER].out < g.power[PLAYER].use;
+        rows.push(['状态', e.state === 'active' ? (low && e.d.power < 0 ? '低电' : '正常') : '施工', low && e.d.power < 0 ? 'red' : '']);
+        if (e.d.produces) {
+          const slot = g.prod[e.d.produces];
+          rows.push(['生产', slot ? `${UNITS[slot.key].cn.replace(/ /g, '')} ${Math.round(slot.t / slot.total * 100)}%` : '空闲']);
+          rows.push(['集结', '右键设定']);
+        }
+      }
+      cb.stats.innerHTML = rows.map(([k, v, cls]) =>
+        `<div class="st"><span class="sk">${k}</span><span class="sv ${cls || ''}">${v}</span></div>`).join('');
+    } else {
+      cb.count.textContent = 'x' + sel.length;
+      cb.count.classList.remove('hidden');
+      cb.stats.style.display = 'none';
+      cb.multi.style.display = 'flex';
+      cb.multi.innerHTML = '';
+      const MAX = 16;
+      sel.slice(0, MAX).forEach(e => {
+        const card = document.createElement('div');
+        card.className = 'cb-card';
+        const cv = document.createElement('canvas');
+        cv.width = 40; cv.height = 30;
+        const cc = cv.getContext('2d');
+        cc.imageSmoothingEnabled = false;
+        cc.drawImage(cameo(e.d.sprite), 0, 0, 40, 30);
+        card.appendChild(cv);
+        const hp = document.createElement('div');
+        hp.className = 'chp';
+        const i = document.createElement('i');
+        const frac = e.hp / e.maxHp;
+        i.style.width = (frac * 100) + '%';
+        i.style.background = frac > 0.5 ? '#35e85f' : frac > 0.25 ? '#e8c22e' : '#f24d3a';
+        hp.appendChild(i);
+        card.appendChild(hp);
+        card.addEventListener('click', ev => {
+          if (ev.shiftKey) g.selection.delete(e);
+          else { g.selection.clear(); g.selection.add(e); }
+          this.audio.sfx('click');
+        });
+        cb.multi.appendChild(card);
+      });
+      if (sel.length > MAX) {
+        const more = document.createElement('div');
+        more.className = 'cb-card';
+        more.style.display = 'flex'; more.style.alignItems = 'center'; more.style.justifyContent = 'center';
+        more.style.color = '#79879a'; more.style.fontSize = '11px';
+        more.textContent = '+' + (sel.length - MAX);
+        cb.multi.appendChild(more);
+      }
+    }
+
+    // command card
+    const units = sel.filter(e => !e.isBuilding);
+    const hasCombat = units.some(u => u.w);
+    const hasBuilder = units.some(u => u.d.builder);
+    const hasHarv = units.some(u => u.harv);
+    const single = sel.length === 1 ? sel[0] : null;
+    const btns = [];
+    if (hasCombat) {
+      btns.push({ t: '攻', hk: 'A', cls: this.attackArmed ? 'on' : '', fn: () => { this.attackArmed = true; this.cbSig = ''; } });
+      btns.push({ t: '停', hk: 'S', fn: () => g.cmdStop(units) });
+      btns.push({ t: '戒', hk: 'G', fn: () => { g.cmdGuard(units); this.banner('警戒模式：坚守阵地', 'good'); } });
+    } else if (units.length && !hasBuilder && !hasHarv) {
+      btns.push({ t: '停', hk: 'S', fn: () => g.cmdStop(units) });
+    }
+    if (hasBuilder) {
+      btns.push({ t: '建', hk: 'B', fn: () => { this.sidebar.setTab('build'); this.banner('选择要建造的建筑', 'good'); } });
+      if (!hasCombat) btns.push({ t: '停', hk: 'S', fn: () => g.cmdStop(units) });
+    }
+    if (hasHarv) {
+      btns.push({ t: '矿', hk: 'V', fn: () => this.autoHarvest(units) });
+    }
+    if (single && single.isBuilding && single.owner === PLAYER) {
+      if (single.state === 'site') {
+        btns.push({ t: '撤', hk: 'X', cls: 'danger', fn: () => { single.startSell(g); this.cbSig = ''; } });
+      } else if (single.state === 'active') {
+        btns.push({ t: '修', hk: 'C', cls: g.mode === 'repair' ? 'on' : '', fn: () => this.setMode(g.mode === 'repair' ? 'normal' : 'repair') });
+        btns.push({ t: '售', hk: 'X', cls: (g.mode === 'sell' ? 'on ' : '') + 'danger', fn: () => this.setMode(g.mode === 'sell' ? 'normal' : 'sell') });
+      }
+    }
+    cb.cmds.innerHTML = '';
+    for (const b of btns.slice(0, 8)) {
+      const el = document.createElement('button');
+      el.className = 'cbtn ' + (b.cls || '');
+      el.innerHTML = `${b.t}<span class="hk">${b.hk}</span>`;
+      el.addEventListener('click', () => { this.audio.ensure(); b.fn(); this.audio.sfx('click'); });
+      cb.cmds.appendChild(el);
+    }
+  }
+
+  autoHarvest(units) {
+    const g = this.g;
+    for (const u of units) {
+      if (!u.harv) continue;
+      const c = g.map.findOreNear((u.x / TILE) | 0, (u.y / TILE) | 0);
+      if (c) u.orderHarvest(g, c.cx, c.cy);
+    }
+  }
+
   // ---------------- per-frame ----------------
   frame() {
     this.updateCursor();
     this.drawMinimap();
     this.sidebar.refresh();
+    this.updateCmdbar();
   }
 
   // drag box + extra world-space UI, called inside game.render

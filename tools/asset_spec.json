@@ -284,6 +284,28 @@
         "quantize": 160,
         "dither": true
       }
+    },
+    "unit_builder": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "A compact military engineering construction vehicle seen from directly above with its front pointing UP toward 12 o'clock: tracked bulldozer-like chassis, a small crane arm folded along one side, yellow-and-black hazard stripes across the gunmetal body, teal accent panels, an amber warning beacon light on the cab roof.",
+      "process": {
+        "type": "unit",
+        "size": 34
+      }
+    },
+    "site_frame": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "An under-construction building site for a retro RTS, viewed top-down at a slight 3/4 angle: a skeletal steel girder frame with scaffolding poles rising from a weathered square concrete foundation pad, stacked I-beams, wooden crates, a small cement mixer, yellow caution stripes on barriers, sparse and clearly unfinished — mostly open framework.",
+      "process": {
+        "type": "building",
+        "size": 110
+      },
+      "meta": {
+        "fw": 3,
+        "fh": 3
+      }
     }
   }
 }
