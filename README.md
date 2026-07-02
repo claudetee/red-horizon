@@ -4,7 +4,11 @@
 
 **▶ 立即游玩: https://claudetee.github.io/red-horizon/**
 
-![RED HORIZON title](assets/img/title_art.png)
+![RED HORIZON title](shots/title.png)
+
+| 装甲对决 | 全局战场 |
+|---|---|
+| ![battle](shots/battle.png) | ![overview](shots/overview.png) |
 
 ## 这是什么
 
