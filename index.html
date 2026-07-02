@@ -68,6 +68,7 @@
       <div class="rh-sub2">红 色 地 平 线</div>
       <div class="menu">
         <button id="bt-skirmish" class="mbtn">遭 遇 战</button>
+        <button id="bt-mp" class="mbtn">联 机 对 战</button>
         <button id="bt-howto" class="mbtn">作 战 手 册</button>
         <button id="bt-settings" class="mbtn">系 统 设 置</button>
       </div>
@@ -124,6 +125,28 @@
     </div>
   </div>
 
+  <div id="screen-mp" class="screen hidden">
+    <div class="panel">
+      <h2>联 机 对 战 <span class="en">MULTIPLAYER 1v1</span></h2>
+      <div id="mp-choose">
+        <div class="menu">
+          <button id="bt-mp-host" class="mbtn primary">创 建 房 间</button>
+          <div class="mp-join-row">
+            <input id="mp-code-in" maxlength="5" placeholder="房间码" autocomplete="off">
+            <button id="bt-mp-join" class="mbtn">加 入</button>
+          </div>
+          <button id="bt-mp-back" class="mbtn">返 回</button>
+        </div>
+        <div class="mp-note">P2P 直连 · 建议 Chrome/Edge 浏览器 · 加入方将指挥猩红军团</div>
+      </div>
+      <div id="mp-wait" class="hidden">
+        <div class="mp-code-big" id="mp-code-show"></div>
+        <div id="mp-status">正在建立信令连接…</div>
+        <div class="btn-row"><button id="bt-mp-cancel" class="mbtn">取 消</button></div>
+      </div>
+    </div>
+  </div>
+
   <div id="screen-pause" class="screen hidden">
     <div class="panel">
       <h2>暂 停 <span class="en">PAUSED</span></h2>
@@ -162,6 +185,8 @@
   <div id="crt"></div>
   <div id="mobile-note">建议使用桌面浏览器与鼠标进行指挥作战</div>
 
+<div id="net-wait" class="hidden">等待对方指令…</div>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

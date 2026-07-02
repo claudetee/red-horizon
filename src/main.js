@@ -8,9 +8,10 @@ import { Game } from './game/game.js';
 import { Sidebar } from './ui/sidebar.js';
 import { HUD } from './ui/hud.js';
 import { TIPS, PLAYER, ENEMY } from './game/data.js';
+import { NetSession } from './net/net.js';
 
 const $ = id => document.getElementById(id);
-const screens = ['loading', 'title', 'brief', 'howto', 'pause', 'settings', 'end'];
+const screens = ['loading', 'title', 'brief', 'howto', 'pause', 'settings', 'end', 'mp'];
 function showScreen(name) {
   for (const s of screens) $(`screen-${s}`).classList.toggle('hidden', s !== name);
   if (!name) for (const s of screens) $(`screen-${s}`).classList.add('hidden');
@@ -29,6 +30,7 @@ const audio = new AudioSys();
 let game = null, sidebar = null, hud = null, rig = null;
 let raf = 0, lastT = 0, acc = 0;
 let settingsBack = 'title';
+let net = null, mpRole = null;
 
 function applySettings() {
   audio.setVolumes(settings.sfx / 100, settings.music / 100);
@@ -53,10 +55,22 @@ function resize() {
 window.addEventListener('resize', resize);
 
 function newGame(difficulty, mapKey = 'wasteland', paceKey = 'standard') {
+  const seed = params.has('seed') ? Number(params.get('seed')) : ((Math.random() * 1e9) | 0);
+  launchGame({ difficulty, seed, mapKey, pace: paceKey, debug: DEBUG });
+}
+
+function startPvp(cfg, localPlayer) {
+  launchGame({
+    difficulty: 'normal', seed: cfg.seed, mapKey: cfg.mapKey, pace: cfg.pace,
+    pvp: true, localPlayer, debug: false,
+  }, net);
+}
+
+function launchGame(opts, netSession = null) {
   cancelAnimationFrame(raf);
   const cv = $('game');
-  const seed = params.has('seed') ? Number(params.get('seed')) : ((Math.random() * 1e9) | 0);
-  game = new Game(cv, audio, { difficulty, seed, mapKey, pace: paceKey, debug: DEBUG });
+  game = new Game(cv, audio, opts);
+  game.net = netSession;
   audio.game = game;
   audio.combatHeat = 0;
   if ('speechSynthesis' in window) { try { speechSynthesis.cancel(); } catch (e) {} }
@@ -69,7 +83,7 @@ function newGame(difficulty, mapKey = 'wasteland', paceKey = 'standard') {
   else hud.setGame(game);
   hud.onEsc = () => {
     if (!game || game.over) return;
-    game.paused = true;
+    if (!game.net) game.paused = true;   // no pausing a live PVP match
     showScreen('pause');
   };
   game.onEnd = won => {
@@ -110,8 +124,31 @@ function loop(t) {
   if (!game.paused && !game.over) {
     acc += dtReal;
     let n = 0;
-    while (acc >= DT && n < 6) { game.update(); acc -= DT; n++; }
-    if (n >= 6) acc = 0; // panic drop after tab-away
+    if (game.net) {
+      // lockstep: only advance into ticks whose turn bundles have arrived
+      const lim = game.net.maxTick();
+      while (acc >= DT && game.tick < lim && n < 6) {
+        game.net.beforeTick(game);
+        game.update();
+        acc -= DT; n++;
+      }
+      if (game.tick >= game.net.maxTick()) acc = Math.min(acc, DT * 2);
+      game.net.pump(game);
+      const stalled = !game.over && game.tick >= game.net.maxTick();
+      game.net.stallT = stalled ? (game.net.stallT || 0) + dtReal : 0;
+      $('net-wait').classList.toggle('hidden', !(game.net.stallT > 0.45));
+      // hard-kill detection: WebRTC close events are unreliable when the peer's
+      // process dies — a lockstep stall this long means the opponent is gone
+      if (game.net.stallT > 9 && !game.net.closed) {
+        game.net.closed = true;
+        hud && hud.banner('对方已断开连接', 'gold');
+        game.surrender(1 - game.localPlayer);
+        $('net-wait').classList.add('hidden');
+      }
+    } else {
+      while (acc >= DT && n < 6) { game.update(); acc -= DT; n++; }
+      if (n >= 6) acc = 0; // panic drop after tab-away
+    }
   } else if (game.over) {
     // keep simulation particles alive lightly
     acc += dtReal;
@@ -165,13 +202,27 @@ $('bt-launch').addEventListener('click', () => {
   const diff = document.querySelector('input[name=diff]:checked').value;
   const mapKey = document.querySelector('input[name=map]:checked').value;
   const paceKey = document.querySelector('input[name=pace]:checked').value;
+  if (mpRole === 'host' && net && net.conn) {
+    const cfg = { seed: (Math.random() * 1e9) | 0, mapKey, pace: paceKey };
+    net.start(cfg);
+    startPvp(cfg, 0);
+    return;
+  }
   newGame(diff, mapKey, paceKey);
 });
 $('bt-resume').addEventListener('click', () => { audio.sfx('click'); game.paused = false; showScreen(null); });
-$('bt-restart').addEventListener('click', () => { audio.sfx('click'); showScreen('brief'); });
+$('bt-restart').addEventListener('click', () => {
+  audio.sfx('click');
+  if (game && game.net) { quitToTitle(); return; }   // no restarting a live PVP match
+  showScreen('brief');
+});
 $('bt-pause-settings').addEventListener('click', () => { audio.sfx('click'); settingsBack = 'pause'; showScreen('settings'); });
 $('bt-quit').addEventListener('click', () => quitToTitle());
-$('bt-again').addEventListener('click', () => { audio.sfx('click'); showScreen('brief'); });
+$('bt-again').addEventListener('click', () => {
+  audio.sfx('click');
+  if (game && game.net) { quitToTitle(); return; }
+  showScreen('brief');
+});
 $('bt-end-quit').addEventListener('click', () => quitToTitle());
 $('bt-set-back').addEventListener('click', () => {
   audio.sfx('click');
@@ -182,11 +233,102 @@ function quitToTitle() {
   audio.sfx('click');
   audio.stopMusic();
   cancelAnimationFrame(raf);
+  if (net) { try { net.close(); } catch (e) {} net = null; mpRole = null; }
+  $('net-wait').classList.add('hidden');
   game = null;
   if (hud) hud.enabled = false;
   $('app').classList.add('hidden');
   showScreen('title');
 }
+
+// ---------------- multiplayer lobby ----------------
+function wireNet(n) {
+  n.onClose = () => {
+    if (game && game.net === n && !game.over) {
+      hud && hud.banner('对方已断开连接', 'gold');
+      game.surrender(1 - game.localPlayer);
+    } else if (!game) {
+      $('mp-status').textContent = '连接已断开';
+    }
+  };
+  n.onDesync = turn => {
+    window.__desynced = true;
+    if (game && !game.over) {
+      hud && hud.banner('同步校验失败 — 对战中止');
+      game.over = true;
+      game.onEnd && game.onEnd(false);
+    }
+  };
+  n.onError = e => {
+    $('mp-status').textContent = '连接失败：' + (e && (e.type || e.message) || '未知错误');
+  };
+}
+
+// test/diagnostic peek at lobby state
+window.__mp = () => ({ role: mpRole, hasNet: !!net, conn: !!(net && net.conn), open: !!(net && net.conn && net.conn.open) });
+
+function mpShowChoose() {
+  $('mp-choose').classList.remove('hidden');
+  $('mp-wait').classList.add('hidden');
+}
+
+$('bt-mp').addEventListener('click', () => {
+  audio.ensure(); audio.sfx('click');
+  mpShowChoose();
+  showScreen('mp');
+});
+$('bt-mp-back').addEventListener('click', () => {
+  audio.sfx('click');
+  if (net) { net.close(); net = null; }
+  showScreen('title');
+});
+$('bt-mp-cancel').addEventListener('click', () => {
+  audio.sfx('click');
+  if (net) { net.close(); net = null; }
+  mpShowChoose();
+});
+$('bt-mp-host').addEventListener('click', async () => {
+  audio.ensure(); audio.sfx('click');
+  const code = params.get('mpcode') || NetSession.makeCode();   // fixed code for automated tests
+  net = new NetSession();
+  wireNet(net);
+  mpRole = 'host';
+  $('mp-choose').classList.add('hidden');
+  $('mp-wait').classList.remove('hidden');
+  $('mp-code-show').textContent = code;
+  $('mp-status').textContent = '正在连接信令服务器…';
+  net.onPeer = () => {
+    $('mp-status').textContent = '对手已连接！正在进入战场设置…';
+    audio.sfx('ready');
+    setTimeout(() => showScreen('brief'), 700);
+  };
+  try {
+    await net.host(code);
+    $('mp-status').textContent = '房间已创建 — 把房间码告诉对手';
+  } catch (e) { /* onError shows it */ }
+});
+$('bt-mp-join').addEventListener('click', async () => {
+  audio.ensure(); audio.sfx('click');
+  const code = ($('mp-code-in').value || '').trim().toUpperCase();
+  if (code.length < 4) { $('mp-code-in').focus(); return; }
+  net = new NetSession();
+  wireNet(net);
+  mpRole = 'join';
+  $('mp-choose').classList.add('hidden');
+  $('mp-wait').classList.remove('hidden');
+  $('mp-code-show').textContent = code;
+  $('mp-status').textContent = '正在连接房主…';
+  net.onPeer = () => {
+    $('mp-status').textContent = '已连接 — 等待房主选择战场…';
+    audio.sfx('ready');
+  };
+  net.onStart = cfg => {
+    startPvp(cfg, 1);
+  };
+  try {
+    await net.join(code);
+  } catch (e) { /* onError shows it */ }
+});
 
 // settings live-binding
 $('set-sfx').addEventListener('input', e => { settings.sfx = +e.target.value; applySettings(); saveSettings(); });

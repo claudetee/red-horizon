@@ -71,7 +71,7 @@ export class Unit {
     this.boardTarget = target;
     this.target = null; this.amPos = null; this.resumeAM = null; this.guardMode = false; this.deployed = false;
     this.requestPathTo(g, target.x, target.y);
-    if (!silent && this.owner === PLAYER) g.audio.ack();
+    if (!silent && this.owner === g.localPlayer) g.audio.ack();
     return true;
   }
 
@@ -96,7 +96,7 @@ export class Unit {
       // capturing an abandoned gun flips its ownership
       if (t.crew.length === 0 && t.owner !== this.owner) {
         t.owner = this.owner;
-        if (this.owner === PLAYER) g.onBanner && g.onBanner('缴获敌方野战炮！', 'gold');
+        if (this.owner === g.localPlayer) g.onBanner && g.onBanner('缴获敌方野战炮！', 'gold');
       }
       t.crew.push(record);
     } else {
@@ -118,7 +118,7 @@ export class Unit {
       u.kills = rec.kills; u.rank = rec.rank;
     }
     g.combat.puff(this.x, this.y, 'dust', 6, 0.6);
-    if (this.owner === PLAYER) g.audio.sfx('click');
+    if (this.owner === g.localPlayer) g.audio.sfx('click');
     return true;
   }
 
@@ -149,20 +149,21 @@ export class Unit {
     this.resumeAM = null; this.attackAnchor = null;
     this.deployed = false;   // moving breaks siege stance
     this.requestPathTo(g, x, y);
-    if (!silent && this.owner === PLAYER) g.audio.ack();
+    if (!silent && this.owner === g.localPlayer) g.audio.ack();
   }
-  orderAttack(g, t) {
+  orderAttack(g, t, silent) {
     this.state = 'attack'; this.target = t; this.amPos = null;
     this.resumeAM = null;
     this.attackAnchor = { x: this.x, y: this.y };
     this.path = null; this.repathT = 0;
-    if (this.owner === PLAYER) g.audio.ack(true);
+    if (!silent && this.owner === g.localPlayer) g.audio.ack(true);
   }
-  orderAttackMove(g, x, y) {
+  orderAttackMove(g, x, y, silent) {
     this.state = 'attackMove'; this.amPos = { x, y }; this.target = null; this.guardMode = false;
     this.resumeAM = null; this.attackAnchor = null;
+    this.deployed = false;
     this.requestPathTo(g, x, y);
-    if (this.owner === PLAYER) g.audio.ack(true);
+    if (!silent && this.owner === g.localPlayer) g.audio.ack(true);
   }
   orderStop(g) {
     this.state = 'idle'; this.path = null; this.target = null; this.amPos = null;
@@ -173,13 +174,13 @@ export class Unit {
     this.guardMode = true; this.state = 'idle'; this.path = null; this.target = null;
     this.resumeAM = null; this.attackAnchor = { x: this.x, y: this.y };
   }
-  orderHarvest(g, cx, cy) {
+  orderHarvest(g, cx, cy, silent) {
     if (!this.harv) return;
     this.state = 'harvest';
     this.harv.phase = 'toOre';
     this.harv.cell = { cx, cy };
     this.requestPathTo(g, cx * TILE + 16, cy * TILE + 16);
-    if (this.owner === PLAYER) g.audio.ack();
+    if (!silent && this.owner === g.localPlayer) g.audio.ack();
   }
   orderBuild(g, site, silent) {
     if (!this.d.builder || !site || site.dead) return;
@@ -188,7 +189,7 @@ export class Unit {
     this.target = null; this.amPos = null; this.resumeAM = null; this.guardMode = false;
     const dp = site.dockPoint();
     this.requestPathTo(g, dp.x, dp.y);
-    if (!silent && this.owner === PLAYER) g.audio.ack();
+    if (!silent && this.owner === g.localPlayer) g.audio.ack();
   }
 
   requestPathTo(g, x, y) {
@@ -280,7 +281,7 @@ export class Unit {
       return;
     }
     // drop targets that slipped into the fog (player units don't wallhack)
-    if (this.owner === PLAYER && !t.isBuilding && !g.fog.isVisiblePx(t.x, t.y)) {
+    if (!t.isBuilding && !g.fog.isVisibleForPx(this.owner, t.x, t.y)) {
       this.target = null;
       if (this.resumeAM) { const r = this.resumeAM; this.resumeAM = null; this.orderAttackMove(g, r.x, r.y); }
       else this.state = 'idle';
@@ -428,7 +429,7 @@ export class Unit {
         // auto-find ore
         const c = m.findOreNear((this.x / TILE) | 0, (this.y / TILE) | 0);
         if (c) { hv.phase = 'toOre'; hv.cell = c; this.requestPathTo(g, c.cx * TILE + 16, c.cy * TILE + 16); }
-        else { this.state = 'idle'; if (this.owner === PLAYER) g.eva('needMoreOre'); }
+        else { this.state = 'idle'; if (this.owner === g.localPlayer) g.eva('needMoreOre'); }
         break;
       }
       case 'toOre': {
@@ -459,7 +460,7 @@ export class Unit {
           else {
             const c2 = m.findOreNear(mc.cx, mc.cy, 40);
             if (c2) { hv.phase = 'toOre'; hv.cell = c2; this.requestPathTo(g, c2.cx * TILE + 16, c2.cy * TILE + 16); }
-            else { hv.phase = 'idle'; this.state = 'idle'; if (this.owner === PLAYER) g.eva('needMoreOre'); }
+            else { hv.phase = 'idle'; this.state = 'idle'; if (this.owner === g.localPlayer) g.eva('needMoreOre'); }
           }
         }
         break;
@@ -482,7 +483,7 @@ export class Unit {
         }
         if (hv.t <= 0) {
           g.addCredits(this.owner, hv.load);
-          if (this.owner === PLAYER) g.audio.sfx('cash');
+          if (this.owner === g.localPlayer) g.audio.sfx('cash');
           g.stats[this.owner].mined += hv.load;
           hv.load = 0;
           hv.phase = 'toOre';
@@ -548,7 +549,7 @@ export class Unit {
   goUnload(g) {
     const hv = this.harv;
     const ref = g.nearestBuilding(this.owner, 'refinery', this.x, this.y);
-    if (!ref) { hv.phase = 'idle'; this.state = 'idle'; if (this.owner === PLAYER && (g.tick % 90 === 0)) g.eva('needMoreOre'); return; }
+    if (!ref) { hv.phase = 'idle'; this.state = 'idle'; if (this.owner === g.localPlayer && (g.tick % 90 === 0)) g.eva('needMoreOre'); return; }
     hv.refinery = ref;
     hv.phase = 'toRefinery';
     const dock = ref.dockPoint();
@@ -789,20 +790,20 @@ export class Building {
   enqueue(g, key) {
     if (this.state !== 'active' || !this.canTrain(key) || this.queue.length >= 5) return false;
     this.queue.push(key);
-    if (this.owner === PLAYER) g.onSidebarDirty && g.onSidebarDirty();
+    if (this.owner === g.localPlayer) g.onSidebarDirty && g.onSidebarDirty();
     return true;
   }
 
   // cancel the LAST queued copy of `key` (or the active head, refunding progress)
   cancelQueued(g, key) {
     for (let i = this.queue.length - 1; i >= 1; i--) {
-      if (this.queue[i] === key) { this.queue.splice(i, 1); if (this.owner === PLAYER) g.onSidebarDirty && g.onSidebarDirty(); return true; }
+      if (this.queue[i] === key) { this.queue.splice(i, 1); if (this.owner === g.localPlayer) g.onSidebarDirty && g.onSidebarDirty(); return true; }
     }
     if (this.queue[0] === key) {
       g.addCredits(this.owner, this.prodSpent);
       this.queue.shift();
       this.prodT = 0; this.prodSpent = 0;
-      if (this.owner === PLAYER) { g.eva('cancelled'); g.onSidebarDirty && g.onSidebarDirty(); }
+      if (this.owner === g.localPlayer) { g.eva('cancelled'); g.onSidebarDirty && g.onSidebarDirty(); }
       return true;
     }
     return false;
@@ -815,20 +816,20 @@ export class Building {
     const total = BUILD_TIME(ud.cost);
     const lowPow = g.power[this.owner].out < g.power[this.owner].use;
     let speedF = (lowPow ? ECON.lowPowerBuildFactor : 1);
-    if (this.owner === PLAYER && g.fastBuild) speedF *= 8;
-    if (this.owner !== PLAYER && g.ai) speedF *= g.ai.diff.income;
+    if (this.owner === g.localPlayer && g.fastBuild) speedF *= 8;
+    if (this.owner !== g.localPlayer && g.ai) speedF *= g.ai.diff.income;
     const dtEff = DT * speedF;
     const need = Math.min((ud.cost / total) * dtEff, Math.max(0, ud.cost - this.prodSpent));
     if (g.credits[this.owner] >= need) {
       g.credits[this.owner] -= need;
       this.prodSpent += need;
       this.prodT += dtEff;
-    } else if (this.owner === PLAYER && (g.tick % 60) === 0) g.eva('insufficientFunds');
+    } else if (this.owner === g.localPlayer && (g.tick % 60) === 0) g.eva('insufficientFunds');
     if (this.prodT >= total) {
       g.spawnUnitFromFactory(this, key);
       this.queue.shift();
       this.prodT = 0; this.prodSpent = 0;
-      if (this.owner === PLAYER) {
+      if (this.owner === g.localPlayer) {
         g.eva('unitReady');
         g.audio.sfx('ready');
         g.onSidebarDirty && g.onSidebarDirty();
@@ -856,7 +857,7 @@ export class Building {
       if (n > 0) {
         const total = BUILD_TIME(this.d.cost);
         const lowPow = g.power[this.owner].out < g.power[this.owner].use;
-        const mult = (1 + ECON.builderBoost * (n - 1)) * (lowPow ? ECON.lowPowerBuildFactor : 1) * (g.fastBuild && this.owner === 0 ? 8 : 1);
+        const mult = (1 + ECON.builderBoost * (n - 1)) * (lowPow ? ECON.lowPowerBuildFactor : 1) * (g.fastBuild && this.owner === g.localPlayer ? 8 : 1);
         const delta = Math.min(1 - this.progress, (DT / total) * mult);
         const need = Math.min(this.d.cost - this.spent, this.d.cost * delta);
         if (g.credits[this.owner] >= need) {
@@ -868,7 +869,7 @@ export class Building {
             this.state = 'rising';
             this.rise = 0;
           }
-        } else if (this.owner === 0) g.eva('insufficientFunds');
+        } else if (this.owner === g.localPlayer) g.eva('insufficientFunds');
       }
       return;
     }
@@ -988,7 +989,7 @@ export class Building {
       const full = this.d.superweapon.charge * pace().superMul;
       if (this.online(g) && (this.chargeT || 0) < full) {
         this.chargeT = (this.chargeT || 0) + DT;
-        if (this.chargeT >= full && this.owner === PLAYER) g.eva('siloReady');
+        if (this.chargeT >= full && this.owner === g.localPlayer) g.eva('siloReady');
       }
     }
   }
@@ -1009,7 +1010,7 @@ export class Building {
         if (c) u.orderHarvest(g, c.cx, c.cy);
       }
     }
-    if (this.owner === 0 && !silent) {
+    if (this.owner === g.localPlayer && !silent) {
       g.eva('constructionComplete');
       g.audio.sfx('ready');
       if (this.key === 'radar') g.eva('radarOnline');

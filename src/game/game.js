@@ -9,6 +9,7 @@ import { Combat } from './combat.js';
 import { Unit, Building, resetIds } from './entities.js';
 import { AIController } from './ai.js';
 import { UNITS, BUILDINGS, BUILD_TIME, ECON, EVA, DIFFICULTY, PLAYER, ENEMY, TEAM_COLORS, setPace, pace } from './data.js';
+import { applyOrder } from './orders.js';
 
 export class Game {
   constructor(canvas, audio, opts = {}) {
@@ -24,11 +25,13 @@ export class Game {
     this.seed = opts.seed ?? 20260702;
     this.rng = mulberry32(this.seed ^ 0x9e3779b9);
 
+    this.pvp = !!opts.pvp;
+    this.localPlayer = opts.localPlayer ?? PLAYER;
     this.map = new GameMap(this.seed, opts.mapKey || 'wasteland');
     this.map.buildTerrainCanvas();
     this.map.buildOreCanvas();
     this.pathfinder = new Pathfinder(this.map);
-    this.fog = new Fog(this.map);
+    this.fog = new Fog(this.map, this.pvp, this.localPlayer);
     this.combat = new Combat(this);
 
     this.units = [];
@@ -75,8 +78,13 @@ export class Game {
     this.debug = opts.debug || false;
     this.fastBuild = false;
 
+    // ---- order pipeline / lockstep ----
+    this._orderPlayer = this.localPlayer;   // whose order is being applied right now
+    this.net = null;                        // lockstep adapter, null in single-player
+    this.loser = -1;
+
     this.setupStart();
-    this.ai = new AIController(this, this.diff);
+    this.ai = this.pvp ? null : new AIController(this, this.diff);
     // opening guidance
     this.delayed.push({ at: 45, fn: () => { this.onBanner && this.onBanner('指挥官，选中工程车按 B 打开建造菜单', 'good'); } });
     this.delayed.push({ at: 240, fn: () => { this.onBanner && this.onBanner('多台工程车同修一处可以加速施工', 'gold'); } });
@@ -94,8 +102,9 @@ export class Game {
       this.spawnUnit('builder', PLAYER, (ps.cx - 3 + i * 2) * TILE, (ps.cy + 3) * TILE);
       this.spawnUnit('builder', ENEMY, (es.cx + 3 - i * 2) * TILE, (es.cy - 3) * TILE);
     }
-    this.cam.x = ps.cx * TILE - 300;
-    this.cam.y = ps.cy * TILE - 260;
+    const myS = this.map.starts[this.localPlayer];
+    this.cam.x = myS.cx * TILE - 300;
+    this.cam.y = myS.cy * TILE - 260;
     this.recomputePower(PLAYER);
     this.recomputePower(ENEMY);
   }
@@ -120,7 +129,7 @@ export class Game {
     this.units = this.units.filter(x => x !== u);
     this.byId.delete(u.id);
     this.selection.delete(u);
-    this.ai.notifyUnitDied(u);
+    if (this.ai) this.ai.notifyUnitDied(u);
   }
 
   spawnUnitFromFactory(b, key) {
@@ -143,7 +152,7 @@ export class Game {
   }
 
   // factories of this unit type, best (shortest queue) first
-  factoriesFor(key, owner = PLAYER) {
+  factoriesFor(key, owner = this.localPlayer) {
     const fac = UNITS[key].factory;
     return this.buildings
       .filter(b => b.owner === owner && b.key === fac && b.hp > 0 && b.state === 'active')
@@ -151,7 +160,7 @@ export class Game {
   }
 
   // route a unit order to the least-busy matching factory
-  enqueueUnit(key, owner = PLAYER) {
+  enqueueUnit(key, owner = this.localPlayer) {
     if (!this.prereqsMet(key)) return null;
     const list = this.factoriesFor(key, owner);
     for (const b of list) if (b.enqueue(this, key)) return b;
@@ -187,7 +196,7 @@ export class Game {
     return b;
   }
 
-  hasBuilder(owner = PLAYER) {
+  hasBuilder(owner = this.localPlayer) {
     return this.units.some(u => u.owner === owner && u.d.builder && u.hp > 0);
   }
 
@@ -211,7 +220,7 @@ export class Game {
       const newRank = attacker.kills >= 6 ? 2 : attacker.kills >= 3 ? 1 : 0;
       if (newRank > (attacker.rank || 0)) {
         attacker.rank = newRank;
-        if (attacker.owner === PLAYER && !attacker.isBuilding) {
+        if (attacker.owner === this.localPlayer && !attacker.isBuilding) {
           this.onBanner && this.onBanner(`${attacker.d.cn.replace(/ /g, '')} 晋升${newRank === 2 ? '精英' : '老兵'}`, 'gold');
           this.audio.sfx('ready');
         }
@@ -221,18 +230,18 @@ export class Game {
     this.selection.delete(e);
     if (e.isBuilding) {
       this.removeBuilding(e);
-      if (e.owner === PLAYER) { this.eva('buildingLost'); this.pingAt(e.x, e.y); }
+      if (e.owner === this.localPlayer) { this.eva('buildingLost'); this.pingAt(e.x, e.y); }
     } else {
       this.units = this.units.filter(u => u !== e);
       this.byId.delete(e.id);
-      this.ai.notifyUnitDied(e);
-      if (e.owner === PLAYER && e.harv) { this.eva('harvesterUnderAttack'); this.pingAt(e.x, e.y); }
+      if (this.ai) this.ai.notifyUnitDied(e);
+      if (e.owner === this.localPlayer && e.harv) { this.eva('harvesterUnderAttack'); this.pingAt(e.x, e.y); }
     }
     this.checkEnd();
   }
 
   onDamaged(e, attacker) {
-    if (e.owner === PLAYER) {
+    if (e.owner === this.localPlayer) {
       this.lastEvent = { x: e.x, y: e.y };
       if (e.isBuilding) { this.eva('baseUnderAttack'); this.pingAt(e.x, e.y); }
       else if (e.harv) { this.eva('harvesterUnderAttack'); this.pingAt(e.x, e.y); }
@@ -240,7 +249,7 @@ export class Game {
         this.eva('unitsUnderAttack');
         if (this.time - (this._lastUnitPing || -9) > 2.5) { this._lastUnitPing = this.time; this.pingAt(e.x, e.y); }
       }
-    } else {
+    } else if (this.ai) {
       this.ai.notifyDamage(e, attacker);
     }
   }
@@ -278,7 +287,7 @@ export class Game {
     this.nukes.push({ x: tx, y: ty, t: 3.6, max: 3.6, owner: silo.owner, dmg: sw.dmg, splash: sw.splash });
     this.pingAt(tx, ty);
     this.lastEvent = { x: tx, y: ty };
-    this.eva(silo.owner === PLAYER ? 'nukeLaunch' : 'nukeIncoming');
+    this.eva(silo.owner === this.localPlayer ? 'nukeLaunch' : 'nukeIncoming');
     this.audio.sfx('bigboom', { x: tx, y: ty, vol: 0.3 });
     return true;
   }
@@ -318,9 +327,9 @@ export class Game {
     const was = this.power[owner];
     const lowBefore = was.out < was.use;
     this.power[owner] = { out, use };
-    if (owner === PLAYER) {
+    if (owner === this.localPlayer) {
       const lowNow = out < use;
-      const hasRadarBld = this.buildings.some(b => b.owner === PLAYER && b.key === 'radar' && b.hp > 0);
+      const hasRadarBld = this.buildings.some(b => b.owner === owner && b.key === 'radar' && b.hp > 0);
       if (lowNow && !lowBefore) {
         this.eva('lowPower');
         if (hasRadarBld) this.eva('radarOffline');
@@ -330,55 +339,60 @@ export class Game {
     }
   }
 
-  hasRadar(owner = PLAYER) {
+  hasRadar(owner = this.localPlayer) {
     const p = this.power[owner];
     return p.out >= p.use && this.buildings.some(b => b.owner === owner && b.key === 'radar' && b.hp > 0 && b.state === 'active' && b.inGrid(this));
   }
 
-  // place a whole line of wall sites at once (drag-placement)
+  // UI side of wall drag-placement
   placeWallLine(cells) {
-    let placed = 0;
+    if (!cells.length) return 0;
+    const crew = [...this.selection].filter(e => !e.isBuilding && e.d.builder && e.hp > 0).map(e => e.id);
+    this.issue({ k: 'wall', cells, crew });
+    return cells.length;
+  }
+
+  // simulation side
+  applyWallLine(p, cells, crewIds) {
     let firstSite = null;
     for (const [cx, cy] of cells) {
-      if (!this.canPlace('wall', cx, cy)) continue;
-      const s = this.placeBuilding('wall', cx, cy, PLAYER);
+      if (!this.canPlace('wall', cx, cy, p)) continue;
+      const s = this.placeBuilding('wall', cx, cy, p);
       if (!firstSite) firstSite = s;
-      placed++;
     }
     if (firstSite) {
-      let crew = [...this.selection].filter(e => !e.isBuilding && e.d.builder && e.hp > 0);
+      let crew = crewIds.map(id => this.byId.get(id)).filter(u => u && !u.isBuilding && u.d.builder && u.hp > 0 && u.owner === p);
       if (!crew.length) {
-        const u = this.units.find(u => u.owner === PLAYER && u.d.builder && u.hp > 0 && u.state === 'idle')
-          || this.units.find(u => u.owner === PLAYER && u.d.builder && u.hp > 0);
+        const u = this.units.find(u => u.owner === p && u.d.builder && u.hp > 0 && u.state === 'idle')
+          || this.units.find(u => u.owner === p && u.d.builder && u.hp > 0);
         if (u) crew = [u];
       }
       for (const u of crew) u.orderBuild(this, firstSite, true);
-      this.audio.sfx('place');
-      this.eva('building');
-    } else if (cells.length) {
+      this.audio.sfx('place', { x: firstSite.x, y: firstSite.y });
+      if (p === this.localPlayer) this.eva('building');
+    } else if (cells.length && p === this.localPlayer) {
       this.eva('cannotBuildThere');
       this.audio.sfx('deny');
     }
-    return placed;
   }
 
   // ---------- production (player sidebar) ----------
   catOf(key) { return BUILDINGS[key] ? 'build' : UNITS[key].factory === 'barracks' ? 'inf' : 'veh'; }
 
-  prereqsMet(key) {
+  prereqsMet(key, owner = this.localPlayer) {
     const isB = !!BUILDINGS[key];
     const d = isB ? BUILDINGS[key] : UNITS[key];
-    if (isB && d.unique && this.buildings.some(b => b.owner === PLAYER && b.key === key && b.hp > 0)) return false;
-    if (isB && !this.buildings.some(b => b.owner === PLAYER && b.key === 'conyard' && b.hp > 0)) return false;
+    if (isB && d.unique && this.buildings.some(b => b.owner === owner && b.key === key && b.hp > 0)) return false;
+    if (isB && !this.buildings.some(b => b.owner === owner && b.key === 'conyard' && b.hp > 0)) return false;
     if (!isB) {
       const fac = UNITS[key].factory;
-      if (!this.buildings.some(b => b.owner === PLAYER && b.key === fac && b.hp > 0 && b.state === 'active')) return false;
+      if (!this.buildings.some(b => b.owner === owner && b.key === fac && b.hp > 0 && b.state === 'active')) return false;
       for (const p of (d.prereqBld || []))
-        if (!this.buildings.some(b => b.owner === PLAYER && b.key === p && b.hp > 0)) return false;
+        if (!this.buildings.some(b => b.owner === owner && b.key === p && b.hp > 0)) return false;
       return true;
     }
     for (const p of (d.prereq || []))
-      if (!this.buildings.some(b => b.owner === PLAYER && b.key === p && b.hp > 0)) return false;
+      if (!this.buildings.some(b => b.owner === owner && b.key === p && b.hp > 0)) return false;
     return true;
   }
 
@@ -386,13 +400,13 @@ export class Game {
     if (!this.prereqsMet(key)) return false;
     if (this.catOf(key) === 'build') {
       // buildings are erected by engineer trucks on-site
-      if (!this.hasBuilder(PLAYER)) { this.eva('needBuilder'); return false; }
+      if (!this.hasBuilder()) { this.eva('needBuilder'); return false; }
       this.enterPlacement(key);
       this.audio.sfx('click');
       return true;
     }
     // units: route to the least-busy matching factory (per-building queues)
-    const b = this.enqueueUnit(key, PLAYER);
+    const b = this.enqueueUnit(key);
     if (b) { this.audio.sfx('click'); return true; }
     return false;
   }
@@ -402,17 +416,32 @@ export class Game {
     this.mode = 'placing';
   }
 
+  // UI side: validate locally for snappy feedback, then emit an order that
+  // carries the selected engineer ids (selection never enters the simulation)
   confirmPlacement(cx, cy) {
     if (!this.placing) return false;
     if (!this.canPlace(this.placing, cx, cy)) { this.eva('cannotBuildThere'); this.audio.sfx('deny'); return false; }
-    const site = this.placeBuilding(this.placing, cx, cy, PLAYER);
-    this.audio.sfx('place');
-    // dispatch engineers: selected ones first, else the nearest idle one
-    let crew = [...this.selection].filter(e => !e.isBuilding && e.d.builder && e.hp > 0);
+    const crew = [...this.selection].filter(e => !e.isBuilding && e.d.builder && e.hp > 0).map(e => e.id);
+    this.issue({ k: 'place', key: this.placing, x: cx, y: cy, crew });
+    this.placing = null;
+    this.mode = 'normal';
+    this.onSidebarDirty && this.onSidebarDirty();
+    return true;
+  }
+
+  // simulation side (runs identically on both peers)
+  applyPlacement(p, key, cx, cy, crewIds) {
+    if (!this.canPlace(key, cx, cy, p)) {
+      if (p === this.localPlayer) { this.eva('cannotBuildThere'); this.audio.sfx('deny'); }
+      return;
+    }
+    const site = this.placeBuilding(key, cx, cy, p);
+    this.audio.sfx('place', { x: site.x, y: site.y });
+    let crew = crewIds.map(id => this.byId.get(id)).filter(u => u && !u.isBuilding && u.d.builder && u.hp > 0 && u.owner === p);
     if (!crew.length) {
       let best = null, bd = Infinity;
       for (const u of this.units) {
-        if (u.owner !== PLAYER || !u.d.builder || u.hp <= 0) continue;
+        if (u.owner !== p || !u.d.builder || u.hp <= 0) continue;
         const busy = u.state === 'build' && u.buildSite && u.buildSite.state === 'site';
         const d = dist2(u.x, u.y, site.x, site.y) * (busy ? 4 : 1); // prefer idle crews
         if (d < bd) { bd = d; best = u; }
@@ -420,11 +449,7 @@ export class Game {
       if (best) crew = [best];
     }
     for (const u of crew) u.orderBuild(this, site, true);
-    if (crew.length) this.eva('building');
-    this.placing = null;
-    this.mode = 'normal';
-    this.onSidebarDirty && this.onSidebarDirty();
-    return true;
+    if (crew.length && p === this.localPlayer) this.eva('building');
   }
 
   // ---------- queries ----------
@@ -437,8 +462,8 @@ export class Game {
     this.eachEntityNear(x, y, range, e => {
       if (e.owner === owner || e.hp <= 0 || e.dead) return;
       if (e.isBuilding && e.state === 'selling') return;
-      // player units don't see through fog
-      if (owner === PLAYER && !this.fog.isVisiblePx(e.x, e.y)) return;
+      // no wallhacking: deterministic per-owner fog check (AI layer absent in SP = omniscient)
+      if (!this.fog.isVisibleForPx(owner, e.x, e.y)) return;
       const rr = e.isBuilding ? e.selRadius * 0.8 : e.d.r;
       const d = dist(x, y, e.x, e.y) - rr;
       if (d < minD) return;
@@ -462,7 +487,7 @@ export class Game {
     let best = null, bd = Infinity;
     for (const u of this.units) {
       if (u.hp <= 0) continue;
-      if (u.owner !== PLAYER && !this.fog.isVisiblePx(u.x, u.y)) continue;
+      if (u.owner !== this.localPlayer && !this.fog.isVisiblePx(u.x, u.y)) continue;
       const d = dist2(wx, wy, u.x, u.y);
       const rr = (u.selRadius + 3) ** 2;
       if (d < rr && d < bd) { bd = d; best = u; }
@@ -470,7 +495,7 @@ export class Game {
     if (best) return best;
     for (const b of this.buildings) {
       if (b.hp <= 0) continue;
-      if (b.owner !== PLAYER && !(b.known[PLAYER] && this.fog.isExploredPx(b.x, b.y))) continue;
+      if (b.owner !== this.localPlayer && !(b.known[this.localPlayer] && this.fog.isExploredPx(b.x, b.y))) continue;
       if (wx >= b.cx * TILE && wx < (b.cx + b.fw) * TILE && wy >= b.cy * TILE && wy < (b.cy + b.fh) * TILE) return b;
     }
     return null;
@@ -480,57 +505,81 @@ export class Game {
     const out = [];
     const ax = Math.min(x0, x1), ay = Math.min(y0, y1), bx = Math.max(x0, x1), by = Math.max(y0, y1);
     for (const u of this.units) {
-      if (u.owner !== PLAYER || u.hp <= 0) continue;
+      if (u.owner !== this.localPlayer || u.hp <= 0) continue;
       if (u.x >= ax - u.d.r && u.x <= bx + u.d.r && u.y >= ay - u.d.r && u.y <= by + u.d.r) out.push(u);
     }
     return out;
   }
 
+  // ---------- order pipeline ----------
+  // every UI mutation goes through here; in multiplayer the order is queued
+  // into the current lockstep turn instead of running immediately.
+  issue(o) {
+    o.p = o.p ?? this.localPlayer;
+    if (this.net) { this.net.queueLocal(o); return; }
+    this._orderPlayer = o.p;
+    applyOrder(this, o);
+    this._orderPlayer = this.localPlayer;
+  }
+
+  // markers & acknowledgment sounds belong to the player who gave the order
+  get fxOn() { return this._orderPlayer === this.localPlayer; }
+
+  // lockstep entry point: apply a (possibly remote) order inside the simulation
+  applyNetOrder(o) { applyOrder(this, o); }
+
   // ---------- orders from UI ----------
   cmdMove(units, tx, ty) {
     const list = units.filter(u => !u.isBuilding);
     if (!list.length) return;
-    this.markers.push({ x: tx, y: ty, t: 0.6, type: 'move' });
+    if (this.fxOn) this.markers.push({ x: tx, y: ty, t: 0.6, type: 'move' });
     const tcx = clamp((tx / TILE) | 0, 0, this.map.w - 1), tcy = clamp((ty / TILE) | 0, 0, this.map.h - 1);
     const taken = new Set();
     const sorted = [...list].sort((a, b) => dist2(a.x, a.y, tx, ty) - dist2(b.x, b.y, tx, ty));
-    let first = true;
     for (const u of sorted) {
       const cell = list.length === 1 ? { cx: tcx, cy: tcy } : this.map.findFreeNear(tcx, tcy, taken, 8);
-      u.orderMove(this, cell.cx * TILE + 16, cell.cy * TILE + 16, !first);
-      first = false;
+      u.orderMove(this, cell.cx * TILE + 16, cell.cy * TILE + 16, true);
     }
+    if (this.fxOn) this.audio.ack();
   }
 
   cmdAttack(units, target) {
-    this.markers.push({ x: target.x, y: target.y, t: 0.6, type: 'attack' });
-    let first = true;
+    if (this.fxOn) this.markers.push({ x: target.x, y: target.y, t: 0.6, type: 'attack' });
     for (const u of units) {
       if (u.isBuilding) continue;
-      if (u.w) { first ? u.orderAttack(this, target) : (u.orderAttack(this, target), 0); }
+      if (u.w) u.orderAttack(this, target, true);
       else u.orderMove(this, target.x, target.y, true);
-      first = false;
     }
+    if (this.fxOn) this.audio.ack(true);
   }
 
   cmdAttackMove(units, tx, ty) {
-    this.markers.push({ x: tx, y: ty, t: 0.6, type: 'attack' });
+    if (this.fxOn) this.markers.push({ x: tx, y: ty, t: 0.6, type: 'attack' });
     const taken = new Set();
     const tcx = clamp((tx / TILE) | 0, 0, this.map.w - 1), tcy = clamp((ty / TILE) | 0, 0, this.map.h - 1);
-    let first = true;
     for (const u of units) {
       if (u.isBuilding) continue;
       const cell = units.length === 1 ? { cx: tcx, cy: tcy } : this.map.findFreeNear(tcx, tcy, taken, 8);
-      if (u.w) u.orderAttackMove(this, cell.cx * TILE + 16, cell.cy * TILE + 16);
+      if (u.w) u.orderAttackMove(this, cell.cx * TILE + 16, cell.cy * TILE + 16, true);
       else u.orderMove(this, cell.cx * TILE + 16, cell.cy * TILE + 16, true);
-      if (first && u.owner === PLAYER) {} // ack handled in order fns
-      first = false;
     }
+    if (this.fxOn) this.audio.ack(true);
   }
 
   cmdHarvest(units, cx, cy) {
-    this.markers.push({ x: cx * TILE + 16, y: cy * TILE + 16, t: 0.6, type: 'move' });
-    for (const u of units) if (u.harv) u.orderHarvest(this, cx, cy);
+    if (this.fxOn) this.markers.push({ x: cx * TILE + 16, y: cy * TILE + 16, t: 0.6, type: 'move' });
+    for (const u of units) if (u.harv) u.orderHarvest(this, cx, cy, true);
+    if (this.fxOn) this.audio.ack();
+  }
+
+  surrender(p) {
+    if (this.over) return;
+    this.loser = p;
+    this.over = true;
+    this.won = p !== this.localPlayer;
+    this.eva(this.won ? 'victory' : 'defeat');
+    this.audio.endJingle(this.won);
+    this.onEnd && this.onEnd(this.won);
   }
 
   cmdStop(units) { for (const u of units) if (!u.isBuilding) u.orderStop(this); }
@@ -577,7 +626,7 @@ export class Game {
     for (const b of this.buildings) b.update(this);
 
     this.combat.update();
-    this.ai.update();
+    if (this.ai) this.ai.update();
 
     if ((this.tick % 6) === 0) this.fog.update(this);
     if ((this.tick % 30) === 0) this.map.regenOre(1.0);
@@ -654,7 +703,7 @@ export class Game {
   checkEnd() {
     if (this.over) return;
     const alive = o => this.buildings.some(b => b.owner === o && b.hp > 0 && b.state !== 'selling');
-    const pAlive = alive(PLAYER), eAlive = alive(ENEMY);
+    const pAlive = alive(this.localPlayer), eAlive = alive(1 - this.localPlayer);
     if (pAlive && eAlive) return;
     this.over = true;
     this.won = pAlive;
@@ -728,18 +777,18 @@ export class Game {
     const margin = 120;
     for (const b of this.buildings) {
       if (b.x < cam.x - margin || b.x > cam.x + sw + margin || b.y < cam.y - margin || b.y > cam.y + sh + margin) continue;
-      if (b.owner !== PLAYER && !b.known[PLAYER] && this.fog.enabled) continue;
+      if (b.owner !== this.localPlayer && !b.known[this.localPlayer] && this.fog.enabled) continue;
       drawList.push(b);
     }
     for (const u of this.units) {
       if (u.hp <= 0) continue;
       if (u.x < cam.x - margin || u.x > cam.x + sw + margin || u.y < cam.y - margin || u.y > cam.y + sh + margin) continue;
-      if (u.owner !== PLAYER && !this.fog.isVisiblePx(u.x, u.y)) continue;
+      if (u.owner !== this.localPlayer && !this.fog.isVisiblePx(u.x, u.y)) continue;
       drawList.push(u);
     }
     drawList.sort((a, b) => a.y - b.y);
     for (const e of drawList) {
-      const dim = e.isBuilding && e.owner !== PLAYER && !this.fog.isVisiblePx(e.x, e.y);
+      const dim = e.isBuilding && e.owner !== this.localPlayer && !this.fog.isVisiblePx(e.x, e.y);
       if (dim) { ctx.save(); ctx.filter = 'brightness(0.55)'; }
       e.draw(ctx, cam, this);
       if (dim) ctx.restore();
@@ -790,7 +839,7 @@ export class Game {
       ctx.save();
       ctx.setLineDash([6, 5]);
       for (const b of this.buildings) {
-        if (b.owner !== PLAYER || b.hp <= 0 || b.state !== 'active' || !b.d.gridRange) continue;
+        if (b.owner !== this.localPlayer || b.hp <= 0 || b.state !== 'active' || !b.d.gridRange) continue;
         const px = (b.x - cam.x) * z, py = (b.y - cam.y) * z;
         const r = b.d.gridRange * TILE * z;
         ctx.strokeStyle = 'rgba(46,230,214,0.30)';
@@ -808,7 +857,7 @@ export class Game {
         const ok = this.canPlace('wall', cx, cy);
         ctx.fillStyle = ok ? 'rgba(60,255,140,0.25)' : 'rgba(255,60,50,0.3)';
         ctx.fillRect((cx * TILE - cam.x) * z + 1, (cy * TILE - cam.y) * z + 1, TILE * z - 2, TILE * z - 2);
-        const img = sprTeam('bld_wall', PLAYER);
+        const img = sprTeam('bld_wall', this.localPlayer);
         ctx.globalAlpha = 0.5;
         ctx.drawImage(img, ((cx + 0.5) * TILE - cam.x) * z - img.width * z / 2, ((cy + 0.5) * TILE - cam.y) * z - img.height * z / 2, img.width * z, img.height * z);
         ctx.globalAlpha = 1;
@@ -830,7 +879,7 @@ export class Game {
           ctx.strokeRect((gx - cam.x) * z + 1, (gy - cam.y) * z + 1, TILE * z - 2, TILE * z - 2);
         }
       }
-      const img = sprTeam(d.sprite, PLAYER);
+      const img = sprTeam(d.sprite, this.localPlayer);
       ctx.globalAlpha = 0.55;
       ctx.drawImage(img,
         ((cx + d.fw / 2) * TILE - cam.x) * z - img.width * z / 2,

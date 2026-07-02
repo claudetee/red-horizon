@@ -124,7 +124,7 @@ export class HUD {
     else {
       const h = g.hoverEntity;
       const anyCombat = [...g.selection].some(e => !e.isBuilding);
-      if (h && h.owner !== PLAYER && anyCombat) cur = this.cursors.attack;
+      if (h && h.owner !== g.localPlayer && anyCombat) cur = this.cursors.attack;
       else if (anyCombat) {
         const cx = (this.mouse.wx / TILE) | 0, cy = (this.mouse.wy / TILE) | 0;
         cur = g.map.isPassable(cx, cy) || g.map.inB(cx, cy) && g.map.ore[cy * g.map.w + cx] > 0 ? this.cursors.move : this.cursors.no;
@@ -157,7 +157,8 @@ export class HUD {
           return;
         }
         if (g.mode === 'nuke') {
-          if (this.nukeSilo && g.launchNuke(this.nukeSilo, this.mouse.wx, this.mouse.wy)) {
+          if (this.nukeSilo && (this.nukeSilo.chargeT || 0) >= this.nukeSilo.d.superweapon.charge) {
+            g.issue({ k: 'nuke', b: this.nukeSilo.id, x: this.mouse.wx, y: this.mouse.wy });
             g.mode = 'normal';
             this.nukeSilo = null;
             this.cbSig = '';
@@ -172,11 +173,11 @@ export class HUD {
         }
         if (g.mode === 'sell' || g.mode === 'repair') {
           const t = g.pickAt(this.mouse.wx, this.mouse.wy);
-          if (t && t.isBuilding && t.owner === PLAYER) {
+          if (t && t.isBuilding && t.owner === g.localPlayer) {
             if (g.mode === 'sell') {
-              if (t.state === 'active') t.startSell(g);
+              if (t.state === 'active' || t.state === 'site') g.issue({ k: 'sell', b: t.id });
               else this.audio.sfx('deny');
-            } else { t.repairing = !t.repairing; this.audio.sfx('click'); }
+            } else { g.issue({ k: 'repairB', b: t.id }); this.audio.sfx('click'); }
           }
           return;
         }
@@ -265,13 +266,13 @@ export class HUD {
       // click select
       const t = g.pickAt(this.mouse.wx, this.mouse.wy);
       const now = performance.now();
-      if (t && t.owner === PLAYER) {
+      if (t && t.owner === g.localPlayer) {
         // double click: select same type on screen
         if (now - this.lastClickT < 320 && this.lastClickTarget === t && !t.isBuilding) {
           const vw = this.viewport.clientWidth / g.cam.zoom, vh = this.viewport.clientHeight / g.cam.zoom;
           g.selection.clear();
           for (const u of g.units) {
-            if (u.owner === PLAYER && u.key === t.key &&
+            if (u.owner === g.localPlayer && u.key === t.key &&
               u.x > g.cam.x && u.x < g.cam.x + vw && u.y > g.cam.y && u.y < g.cam.y + vh) g.selection.add(u);
           }
           this.audio.sfx('click');
@@ -315,61 +316,59 @@ export class HUD {
   onRightClick() {
     const g = this.g;
     if (g.mode === 'placing') { g.mode = 'normal'; g.placing = null; g.wallLine = null; this.wallStart = null; return; }
-    if (g.mode === 'sell' || g.mode === 'repair') { this.setMode('normal'); return; }
+    if (g.mode === 'sell' || g.mode === 'repair' || g.mode === 'nuke') { this.setMode('normal'); this.nukeSilo = null; return; }
     const units = this.selectedUnits();
+    const ids = units.map(u => u.id);
     const hover = g.pickAt(this.mouse.wx, this.mouse.wy);
 
     // factory rally point
     if (!units.length) {
-      const facs = [...g.selection].filter(e => e.isBuilding && e.d.produces && e.owner === PLAYER);
+      const facs = [...g.selection].filter(e => e.isBuilding && e.d.produces && e.owner === g.localPlayer);
       if (facs.length) {
-        for (const f of facs) f.rally = { x: this.mouse.wx, y: this.mouse.wy };
+        for (const f of facs) g.issue({ k: 'rally', b: f.id, x: this.mouse.wx, y: this.mouse.wy });
         g.markers.push({ x: this.mouse.wx, y: this.mouse.wy, t: 0.6, type: 'move' });
         this.audio.sfx('click');
       }
       return;
     }
-    if (hover && hover.owner !== PLAYER) {
-      g.cmdAttack(units, hover);
-      this.audio.noteCombatUi?.();
+    // enemy target → attack (abandoned enemy field guns fall through to boarding)
+    if (hover && hover.owner !== g.localPlayer && !(hover.d && hover.d.crewed && !hover.isBuilding && hover.crew.length === 0 && units.some(u => u.d.organic))) {
+      g.issue({ k: 'atk', u: ids, t: hover.id });
       return;
     }
     // infantry: right-click a field gun (or own transport) = board it
     if (hover && !hover.isBuilding && (hover.d.crewed || hover.d.transport)) {
       const troops = units.filter(u => u.d.organic);
-      const boardable = (hover.d.crewed && hover.crew.length < hover.d.crewed.max && (hover.crew.length > 0 ? hover.owner === PLAYER : true))
-        || (hover.d.transport && hover.owner === PLAYER && hover.cargo.length < hover.d.transport.cap);
+      const boardable = (hover.d.crewed && hover.crew.length < hover.d.crewed.max && (hover.crew.length > 0 ? hover.owner === g.localPlayer : true))
+        || (hover.d.transport && hover.owner === g.localPlayer && hover.cargo.length < hover.d.transport.cap);
       if (troops.length && boardable) {
-        let n = 0;
-        for (const u of troops) { if (u.orderBoard(g, hover, n > 0)) n++; }
-        if (n) {
-          g.markers.push({ x: hover.x, y: hover.y, t: 0.6, type: 'move' });
-          const rest = units.filter(u => !u.d.organic);
-          if (rest.length) g.cmdMove(rest, this.mouse.wx, this.mouse.wy);
-          return;
-        }
+        g.issue({ k: 'board', u: troops.map(u => u.id), t: hover.id });
+        const rest = units.filter(u => !u.d.organic);
+        if (rest.length) g.issue({ k: 'mv', u: rest.map(u => u.id), x: this.mouse.wx, y: this.mouse.wy });
+        g.markers.push({ x: hover.x, y: hover.y, t: 0.6, type: 'move' });
+        return;
       }
     }
     // engineers: right-click own site (or damaged building) = build / repair
-    if (hover && hover.owner === PLAYER && hover.isBuilding) {
+    if (hover && hover.owner === g.localPlayer && hover.isBuilding) {
       const crews = units.filter(u => u.d.builder);
       if (crews.length && (hover.state === 'site' || hover.hp < hover.maxHp)) {
-        for (const u of crews) u.orderBuild(g, hover, u !== crews[0]);
+        g.issue({ k: 'crew', u: crews.map(u => u.id), t: hover.id });
         g.markers.push({ x: hover.x, y: hover.y, t: 0.6, type: 'move' });
         const rest = units.filter(u => !u.d.builder);
-        if (rest.length) g.cmdMove(rest, this.mouse.wx, this.mouse.wy);
+        if (rest.length) g.issue({ k: 'mv', u: rest.map(u => u.id), x: this.mouse.wx, y: this.mouse.wy });
         return;
       }
     }
     // ore? send harvesters
     const cx = (this.mouse.wx / TILE) | 0, cy = (this.mouse.wy / TILE) | 0;
     if (g.map.inB(cx, cy) && g.map.ore[cy * g.map.w + cx] > 0 && units.some(u => u.harv)) {
-      g.cmdHarvest(units.filter(u => u.harv), cx, cy);
+      g.issue({ k: 'harv', u: units.filter(u => u.harv).map(u => u.id), x: cx, y: cy });
       const rest = units.filter(u => !u.harv);
-      if (rest.length) g.cmdMove(rest, this.mouse.wx, this.mouse.wy);
+      if (rest.length) g.issue({ k: 'mv', u: rest.map(u => u.id), x: this.mouse.wx, y: this.mouse.wy });
       return;
     }
-    g.cmdMove(units, this.mouse.wx, this.mouse.wy);
+    g.issue({ k: 'mv', u: ids, x: this.mouse.wx, y: this.mouse.wy });
   }
 
   issueAttackMove() {
@@ -377,8 +376,8 @@ export class HUD {
     const units = this.selectedUnits();
     if (!units.length) return;
     const hover = g.pickAt(this.mouse.wx, this.mouse.wy);
-    if (hover && hover.owner !== PLAYER) g.cmdAttack(units, hover);
-    else g.cmdAttackMove(units, this.mouse.wx, this.mouse.wy);
+    if (hover && hover.owner !== g.localPlayer) g.issue({ k: 'atk', u: units.map(u => u.id), t: hover.id });
+    else g.issue({ k: 'am', u: units.map(u => u.id), x: this.mouse.wx, y: this.mouse.wy });
   }
 
   // ---------------- keys ----------------
@@ -393,11 +392,11 @@ export class HUD {
           if (!e.ctrlKey && !e.metaKey && this.selectedUnits().length) { this.attackArmed = true; }
           break;
         case 'KeyS':
-          if (!e.ctrlKey) { g.cmdStop(this.selectedUnits()); }
+          if (!e.ctrlKey) { g.issue({ k: 'stop', u: this.selectedUnits().map(u => u.id) }); }
           break;
-        case 'KeyG': g.cmdGuard(this.selectedUnits()); break;
+        case 'KeyG': g.issue({ k: 'guard', u: this.selectedUnits().map(u => u.id) }); break;
         case 'KeyH': {
-          const cy = g.nearestBuilding(PLAYER, 'conyard', 0, 0) || g.buildings.find(b => b.owner === PLAYER);
+          const cy = g.nearestBuilding(g.localPlayer, 'conyard', 0, 0) || g.buildings.find(b => b.owner === g.localPlayer);
           if (cy) this.rig.centerOn(cy.x, cy.y);
           break;
         }
@@ -429,14 +428,15 @@ export class HUD {
         case 'KeyV': this.autoHarvest(this.selectedUnits()); break;
         case 'KeyF': {
           let used = false;
-          for (const u of this.selectedUnits()) if (u.d.skill && u.useSkill(g)) used = true;
+          const sk = this.selectedUnits().filter(u => u.d.skill || u.d.crewed || u.d.transport);
+          if (sk.length) { g.issue({ k: sk.some(u => u.d.crewed || u.d.transport) ? 'unload' : 'skill', u: sk.map(u => u.id) }); used = true; }
           if (used) { this.cbSig = ''; this.audio.sfx('click'); }
           break;
         }
         case 'Tab': {
           // cycle through own production buildings (War3-style factory tabbing)
           e.preventDefault();
-          const facs = g.buildings.filter(b => b.owner === PLAYER && b.hp > 0 && b.state === 'active' && b.trainList().length);
+          const facs = g.buildings.filter(b => b.owner === g.localPlayer && b.hp > 0 && b.state === 'active' && b.trainList().length);
           if (!facs.length) break;
           const cur = [...g.selection][0];
           const idx = facs.indexOf(cur);
@@ -497,23 +497,23 @@ export class HUD {
             }
             // selected factory: QWERTY maps to its train list
             const sel = [...g.selection];
-            if (sel.length === 1 && sel[0].isBuilding && sel[0].owner === PLAYER && sel[0].state === 'active') {
+            if (sel.length === 1 && sel[0].isBuilding && sel[0].owner === g.localPlayer && sel[0].state === 'active') {
               const list = sel[0].trainList();
               const key = list[map[e.code]];
               if (key) {
-                if (g.prereqsMet(key) && sel[0].enqueue(g, key)) { this.cbSig = ''; this.audio.sfx('click'); }
+                if (g.prereqsMet(key)) { g.issue({ k: 'buildU', b: sel[0].id, key }); this.cbSig = ''; this.audio.sfx('click'); }
                 else this.audio.sfx('deny');
               }
             }
           }
           // debug keys
           if (g.debug) {
-            if (e.code === 'F2') { g.credits[PLAYER] += 5000; e.preventDefault(); }
+            if (e.code === 'F2') { g.credits[g.localPlayer] += 5000; e.preventDefault(); }
             if (e.code === 'F3') { g.fog.enabled = !g.fog.enabled; g.fog.revealAll(); e.preventDefault(); }
             if (e.code === 'F4') { g.fastBuild = !g.fastBuild; this.banner('快速建造 ' + (g.fastBuild ? 'ON' : 'OFF'), 'gold'); e.preventDefault(); }
             if (e.code === 'F5') { g.ai.waveT = 0.1; e.preventDefault(); }
             if (e.code === 'F6') { for (const b of [...g.buildings]) if (b.owner === ENEMY) b.die(g, null); e.preventDefault(); }
-            if (e.code === 'F7') { for (const b of [...g.buildings]) if (b.owner === PLAYER) b.die(g, null); e.preventDefault(); }
+            if (e.code === 'F7') { for (const b of [...g.buildings]) if (b.owner === g.localPlayer) b.die(g, null); e.preventDefault(); }
           }
         }
       }
@@ -533,7 +533,7 @@ export class HUD {
       if (!this.enabled) return;
       this.audio.ensure();
       const g = this.g;
-      const idle = g.units.filter(u => u.owner === PLAYER && u.d.builder && u.hp > 0 && u.state === 'idle');
+      const idle = g.units.filter(u => u.owner === g.localPlayer && u.d.builder && u.hp > 0 && u.state === 'idle');
       if (!idle.length) { this.audio.sfx('deny'); this.banner('没有空闲的工程车'); return; }
       this._idleIdx = ((this._idleIdx || 0) + 1) % idle.length;
       const u = idle[this._idleIdx];
@@ -619,13 +619,13 @@ export class HUD {
     // entities
     for (const b of g.buildings) {
       if (b.hp <= 0) continue;
-      if (b.owner !== PLAYER && !(b.known[PLAYER])) continue;
+      if (b.owner !== g.localPlayer && !(b.known[g.localPlayer])) continue;
       ctx.fillStyle = TEAM_COLORS[b.owner].mini;
       ctx.fillRect(b.cx * k, b.cy * k, Math.max(2, b.fw * k), Math.max(2, b.fh * k));
     }
     for (const u of g.units) {
       if (u.hp <= 0) continue;
-      if (u.owner !== PLAYER && !g.fog.isVisiblePx(u.x, u.y)) continue;
+      if (u.owner !== g.localPlayer && !g.fog.isVisiblePx(u.x, u.y)) continue;
       ctx.fillStyle = TEAM_COLORS[u.owner].mini;
       const px = u.x / TILE * k, py = u.y / TILE * k;
       ctx.fillRect(px - 1, py - 1, 2.4, 2.4);
@@ -726,7 +726,7 @@ export class HUD {
         rows.push(['工程车', String(e.buildersShown)]);
       } else {
         if (e.d.power) rows.push(['电力', (e.d.power > 0 ? '+' : '') + e.d.power, e.d.power > 0 ? '' : 'gold']);
-        const low = g.power[PLAYER].out < g.power[PLAYER].use;
+        const low = g.power[g.localPlayer].out < g.power[g.localPlayer].use;
         rows.push(['状态', e.state === 'active' ? (low && e.d.power < 0 ? '低电' : '正常') : '施工', low && e.d.power < 0 ? 'red' : '']);
         if (e.d.superweapon && e.state === 'active') {
           const pct = Math.min(100, Math.round((e.chargeT || 0) / e.d.superweapon.charge * 100));
@@ -742,7 +742,7 @@ export class HUD {
       cb.stats.innerHTML = rows.map(([k, v, cls]) =>
         `<div class="st"><span class="sk">${k}</span><span class="sv ${cls || ''}">${v}</span></div>`).join('');
       // production queue cards for a selected factory
-      if (first.isBuilding && first.owner === PLAYER && first.state === 'active' && first.queue.length) {
+      if (first.isBuilding && first.owner === g.localPlayer && first.state === 'active' && first.queue.length) {
         cb.multi.style.display = 'flex';
         cb.multi.innerHTML = '';
         first.queue.forEach((k, qi) => {
@@ -762,7 +762,7 @@ export class HUD {
           i.style.background = '#2ee6d6';
           hp.appendChild(i);
           card.appendChild(hp);
-          card.addEventListener('click', () => { first.cancelQueued(g, k); this.cbSig = ''; this.audio.sfx('click'); });
+          card.addEventListener('click', () => { g.issue({ k: 'cancelU', b: first.id, key: k }); this.cbSig = ''; this.audio.sfx('click'); });
           cb.multi.appendChild(card);
         });
       }
@@ -861,14 +861,14 @@ export class HUD {
     const btns = [];
     if (hasCombat) {
       btns.push({ t: '攻', hk: 'A', cls: this.attackArmed ? 'on' : '', fn: () => { this.attackArmed = true; this.cbSig = ''; } });
-      btns.push({ t: '停', hk: 'S', fn: () => g.cmdStop(units) });
-      btns.push({ t: '戒', hk: 'G', fn: () => { g.cmdGuard(units); this.banner('警戒模式：坚守阵地', 'good'); } });
+      btns.push({ t: '停', hk: 'S', fn: () => g.issue({ k: 'stop', u: units.map(u => u.id) }) });
+      btns.push({ t: '戒', hk: 'G', fn: () => { g.issue({ k: 'guard', u: units.map(u => u.id) }); this.banner('警戒模式：坚守阵地', 'good'); } });
     } else if (units.length && !hasBuilder && !hasHarv) {
-      btns.push({ t: '停', hk: 'S', fn: () => g.cmdStop(units) });
+      btns.push({ t: '停', hk: 'S', fn: () => g.issue({ k: 'stop', u: units.map(u => u.id) }) });
     }
     if (hasBuilder) {
       btns.push({ t: '建', hk: 'B', fn: () => { this.buildMenuOpen = true; this.cbSig = ''; } });
-      if (!hasCombat) btns.push({ t: '停', hk: 'S', fn: () => g.cmdStop(units) });
+      if (!hasCombat) btns.push({ t: '停', hk: 'S', fn: () => g.issue({ k: 'stop', u: units.map(u => u.id) }) });
     }
     if (hasHarv) {
       btns.push({ t: '矿', hk: 'V', fn: () => this.autoHarvest(units) });
@@ -877,7 +877,7 @@ export class HUD {
     if (units.some(u => (u.d.crewed && u.crew.length) || (u.d.transport && u.cargo.length))) {
       btns.push({
         t: '卸', hk: 'F', title: '下炮 / 卸载全部乘员',
-        fn: () => { for (const u of units) if (u.d.crewed || u.d.transport) u.unloadAll(g); this.cbSig = ''; },
+        fn: () => { g.issue({ k: 'unload', u: units.map(u => u.id) }); this.cbSig = ''; },
       });
     }
     // unit skills (sprint / deploy)
@@ -894,11 +894,11 @@ export class HUD {
         cls: (sk.toggle && anyDeployed ? 'on ' : '') + (maxCd > 0.2 && !sk.toggle ? 'cd' : ''),
         cd: !sk.toggle && maxCd > 0.2 ? Math.ceil(maxCd) : 0,
         title: `${sk.cn.replace(/ /g, '')} — ${sk.desc}`,
-        fn: () => { for (const x of holders) x.useSkill(g); this.cbSig = ''; },
+        fn: () => { g.issue({ k: 'skill', u: holders.map(x => x.id) }); this.cbSig = ''; },
       });
     }
 
-    if (single && single.isBuilding && single.owner === PLAYER) {
+    if (single && single.isBuilding && single.owner === g.localPlayer) {
       // factory: production buttons live on the command card (per-building queue)
       if (single.state === 'active' && single.trainList().length) {
         for (const k of single.trainList()) {
@@ -910,14 +910,14 @@ export class HUD {
             title: `${ud.cn.replace(/ /g, '')} $${ud.cost} — ${ud.desc}`,
             fn: () => {
               if (!met) { this.audio.sfx('deny'); return; }
-              if (!single.enqueue(g, k)) this.audio.sfx('deny');
+              if (single.queue.length < 5) { g.issue({ k: 'buildU', b: single.id, key: k }); } else this.audio.sfx('deny');
               this.cbSig = '';
             },
           });
         }
       }
       if (single.state === 'site') {
-        btns.push({ t: '撤', hk: 'X', cls: 'danger', fn: () => { single.startSell(g); this.cbSig = ''; } });
+        btns.push({ t: '撤', hk: 'X', cls: 'danger', fn: () => { g.issue({ k: 'sell', b: single.id }); this.cbSig = ''; } });
       } else if (single.state === 'active') {
         if (single.d.superweapon && (single.chargeT || 0) >= single.d.superweapon.charge) {
           btns.push({
@@ -961,11 +961,8 @@ export class HUD {
 
   autoHarvest(units) {
     const g = this.g;
-    for (const u of units) {
-      if (!u.harv) continue;
-      const c = g.map.findOreNear((u.x / TILE) | 0, (u.y / TILE) | 0);
-      if (c) u.orderHarvest(g, c.cx, c.cy);
-    }
+    const ids = units.filter(u => u.harv).map(u => u.id);
+    if (ids.length) g.issue({ k: 'harvAuto', u: ids });
   }
 
   // ---------------- per-frame ----------------

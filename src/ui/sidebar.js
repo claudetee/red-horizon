@@ -24,14 +24,14 @@ export class Sidebar {
   setGame(game) {
     this.g = game;
     game.onSidebarDirty = () => {};   // per-building UI refreshes itself
-    this.dispCredits = game.credits[PLAYER];
+    this.dispCredits = game.credits[game.localPlayer];
     this.elCredits.textContent = Math.floor(this.dispCredits);
   }
 
   // called every frame
   refresh() {
     const g = this.g;
-    const target = Math.floor(g.credits[PLAYER]);
+    const target = Math.floor(g.credits[g.localPlayer]);
     if (this.dispCredits !== target) {
       const diff = target - this.dispCredits;
       this.dispCredits += Math.abs(diff) < 4 ? diff : Math.ceil(Math.abs(diff) * 0.14) * Math.sign(diff);
@@ -39,7 +39,7 @@ export class Sidebar {
     }
     this.elClock.textContent = fmtTime(g.time);
 
-    const p = g.power[PLAYER];
+    const p = g.power[g.localPlayer];
     const scale = Math.max(100, p.out * 1.25, p.use * 1.25);
     this.elPowerFill.style.width = Math.min(100, p.out / scale * 100) + '%';
     this.elPowerMark.style.left = Math.min(98, p.use / scale * 100) + '%';

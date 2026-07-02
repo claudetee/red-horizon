@@ -153,10 +153,11 @@ export class AIController {
         const cx = Math.round(bx + Math.cos(ang) * r) - (d.fw >> 1);
         const cy = Math.round(by + Math.sin(ang) * r) - (d.fh >> 1);
         if (!g.canPlace(key, cx, cy, this.me)) continue;
-        let score = Math.random() * 3;
+        // deterministic randomness only — this runs inside the lockstep simulation
+        let score = g.rng() * 3;
         if (key === 'turret') {
           // closer to player side = better
-          score = dist2(cx, cy, px, py) / 100 + Math.random() * 8;
+          score = dist2(cx, cy, px, py) / 100 + g.rng() * 8;
         }
         if (score < bestScore) { bestScore = score; bestSpot = { cx, cy }; }
       }
