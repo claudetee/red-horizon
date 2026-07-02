@@ -512,6 +512,74 @@
         "h": 86,
         "quantize": 128
       }
+    },
+    "unit_artillery": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "A self-propelled rocket artillery vehicle seen from directly above with its front pointing UP toward 12 o’clock: a tracked chassis carrying a rectangular multi-tube rocket launcher rack (3x2 tubes visible from above) angled slightly backward, thin armor, teal accent stripes.",
+      "process": {
+        "type": "unit",
+        "size": 38
+      }
+    },
+    "bld_tesla": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "An advanced Tesla-style lightning defense tower for a retro RTS: a tall slender pylon on a small square concrete pad, crowned with a glowing TEAL energy orb between two curved electrode prongs, thick cables coiling down the shaft, crackling with faint electric arcs.",
+      "process": {
+        "type": "building",
+        "size": 52
+      },
+      "meta": {
+        "fw": 1,
+        "fh": 1
+      }
+    },
+    "bld_silo": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A strategic missile silo building for a retro RTS: a heavy square blast-door hatch set into a reinforced concrete pad, the hatch panels slightly parted revealing a red-tipped missile nose cone inside, warning stripes around the rim, small radar mast and floodlights at the corners.",
+      "process": {
+        "type": "building",
+        "size": 80
+      },
+      "meta": {
+        "fw": 2,
+        "fh": 2
+      }
+    },
+    "cameo_unit_artillery": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A tracked multi-tube rocket artillery vehicle mid-salvo, rockets streaking skyward with fire trails.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_tesla": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A tall tesla lightning tower with a glowing teal orb crackling with electric arcs.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_silo": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A missile silo with blast doors parting, a red-tipped strategic missile rising amid steam and floodlights.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
     }
   }
 }

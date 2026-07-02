@@ -15,6 +15,7 @@ export class AIController {
     this.defenseCooldown = 0;
     this.armyCap = 0;
     this.attackers = new Set();    // unit ids currently on attack duty
+    this.harassT = diff.firstWave * 0.45;
   }
 
   base() { return this.g.nearestBuilding(this.me, 'conyard', 0, 0) || this.g.buildings.find(b => b.owner === this.me); }
@@ -28,6 +29,46 @@ export class AIController {
     this.manageBuild();
     this.manageUnits();
     this.manageWave();
+    this.manageHarass();
+    this.manageSuper();
+  }
+
+  // early-game buggy raids on the player's mining line
+  manageHarass() {
+    const g = this.g;
+    this.harassT -= DT;
+    if (this.harassT > 0) return;
+    this.harassT = 175;
+    const raiders = this.military().filter(u => u.key === 'buggy' && !this.attackers.has(u.id)).slice(0, 2);
+    if (!raiders.length) return;
+    const harv = g.units.find(u => u.owner === PLAYER && u.harv && u.hp > 0);
+    const base = g.buildings.find(b => b.owner === PLAYER && b.hp > 0);
+    const t = harv || base;
+    if (!t) return;
+    for (const u of raiders) {
+      this.attackers.add(u.id);
+      u.orderAttackMove(g, t.x + (g.rng() - .5) * 80, t.y + (g.rng() - .5) * 80);
+    }
+  }
+
+  // fire the strategic missile as soon as it's charged
+  manageSuper() {
+    const g = this.g;
+    if ((g.tick % 45) !== 0) return;
+    for (const b of g.buildings) {
+      if (b.owner !== this.me || b.key !== 'silo' || b.hp <= 0 || b.state !== 'active') continue;
+      if ((b.chargeT || 0) < b.d.superweapon.charge) continue;
+      // aim at the densest player building cluster (approx: conyard, else any)
+      const targets = g.buildings.filter(x => x.owner === PLAYER && x.hp > 0);
+      if (!targets.length) return;
+      let best = targets[0], bs = -1;
+      for (const t of targets) {
+        let score = 0;
+        for (const o of targets) if (dist2(t.x, t.y, o.x, o.y) < 150 * 150) score++;
+        if (score > bs) { bs = score; best = t; }
+      }
+      g.launchNuke(b, best.x, best.y);
+    }
   }
 
   countBld(key) { return this.g.buildings.filter(b => b.owner === this.me && b.key === key && b.hp > 0).length; }
@@ -60,6 +101,9 @@ export class AIController {
     if (have('turret') < 2 + Math.min(3, this.waveNum) && g.credits[this.me] > 1100) return 'turret';
     if (have('radar') === 0 && g.credits[this.me] > 2000) return 'radar';
     if (have('power') < 2 + ((have('refinery') + have('factory') + have('radar')) / 2 | 0) && pow.out - pow.use < 40) return 'power';
+    if (have('radar') && have('tesla') < 1 + (this.waveNum > 3 ? 1 : 0) && g.credits[this.me] > 2600) return 'tesla';
+    if (have('radar') && have('repair') === 0 && g.credits[this.me] > 1600) return 'repair';
+    if (have('radar') && have('silo') === 0 && this.waveNum >= 2 && g.credits[this.me] > 4200) return 'silo';
     return null;
   }
 
@@ -137,6 +181,7 @@ export class AIController {
     }
     // vehicles
     const hasRadar = this.countBld('radar') > 0;
+    if (hasRadar && count('artillery') < Math.max(1, (this.waveNum / 2) | 0) && g.credits[this.me] > 2800) return 'artillery';
     if (hasRadar && count('heavy') < 1 + this.waveNum / 3 && g.credits[this.me] > 2400) return 'heavy';
     if (count('tank') < 3 + this.waveNum) return 'tank';
     if (count('buggy') < 2) return 'buggy';

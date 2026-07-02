@@ -191,7 +191,7 @@ export class Unit {
     if (!this.w) return;
     if ((g.tick + this.id) % 9 !== 0) return;
     const range = Math.max(this.d.sight * TILE, this.w.range * TILE * 1.15);
-    const t = g.findNearestEnemy(this.owner, this.x, this.y, range);
+    const t = g.findNearestEnemy(this.owner, this.x, this.y, range, (this.d.minRange || 0) * TILE);
     if (t) {
       if (this.state === 'attackMove') this.resumeAM = { x: this.destX, y: this.destY };
       this.state = 'attack'; this.target = t;
@@ -252,7 +252,7 @@ export class Unit {
       this.heading = turnToward(this.heading, want, this.d.turn * DT);
       aligned = Math.abs(angDiff(this.heading, want)) < 0.16;
     }
-    if (aligned && this.cool <= 0 && this.burstLeft === 0) {
+    if (aligned && this.cool <= 0 && this.burstLeft === 0 && d >= (this.d.minRange || 0) * TILE) {
       this.burstLeft = this.w.burst;
       this.fireAt(g, t);
     }
@@ -803,25 +803,42 @@ export class Building {
     }
     // turret behavior
     if (this.turret && this.state === 'active') {
-      if (this.coolB === undefined) this.coolB = 0;
-      if (this.coolB > 0) this.coolB -= DT;
-      if ((g.tick + this.id) % 7 === 0) {
-        const t = g.findNearestEnemy(this.owner, this.x, this.y, this.w.range * TILE);
-        this.tgt = t;
-      }
-      const t = this.tgt;
-      if (t && t.hp > 0 && dist2(this.x, this.y, t.x, t.y) <= (this.w.range * TILE) ** 2) {
-        const want = Math.atan2(t.y - this.y, t.x - this.x);
-        this.turret.ang = turnToward(this.turret.ang, want, 3.6 * DT);
-        if (this.turret.recoil > 0) this.turret.recoil -= 12 * DT;
-        const lowPow = g.power[this.owner].out < g.power[this.owner].use;
-        if (Math.abs(angDiff(this.turret.ang, want)) < 0.12 && this.coolB <= 0) {
-          const sx = this.x + Math.cos(this.turret.ang) * 14, sy = this.y + Math.sin(this.turret.ang) * 14;
-          g.combat.fire(this, this.w, sx, sy, t);
-          this.turret.recoil = 2.4;
-          this.coolB = this.w.rof / (lowPow ? ECON.lowPowerRofFactor : 1);
+      const lowPow = g.power[this.owner].out < g.power[this.owner].use;
+      // tesla towers are fully dead without power
+      if (this.w.kind === 'tesla' && lowPow) { this.tgt = null; }
+      else {
+        if (this.coolB === undefined) this.coolB = 0;
+        if (this.coolB > 0) this.coolB -= DT;
+        if ((g.tick + this.id) % 7 === 0) {
+          const t = g.findNearestEnemy(this.owner, this.x, this.y, this.w.range * TILE);
+          this.tgt = t;
         }
-      } else this.tgt = null;
+        const t = this.tgt;
+        if (t && t.hp > 0 && dist2(this.x, this.y, t.x, t.y) <= (this.w.range * TILE) ** 2) {
+          const want = Math.atan2(t.y - this.y, t.x - this.x);
+          let aligned = true;
+          if (this.d.turretSprite) {
+            this.turret.ang = turnToward(this.turret.ang, want, 3.6 * DT);
+            if (this.turret.recoil > 0) this.turret.recoil -= 12 * DT;
+            aligned = Math.abs(angDiff(this.turret.ang, want)) < 0.12;
+          }
+          if (aligned && this.coolB <= 0) {
+            const off = this.w.kind === 'tesla' ? { x: this.x, y: this.y - 16 } : { x: this.x + Math.cos(this.turret.ang) * 14, y: this.y + Math.sin(this.turret.ang) * 14 };
+            g.combat.fire(this, this.w, off.x, off.y, t);
+            this.turret.recoil = 2.4;
+            this.coolB = this.w.rof / (lowPow ? ECON.lowPowerRofFactor : 1);
+          }
+        } else this.tgt = null;
+      }
+    }
+    // superweapon charging
+    if (this.d.superweapon && this.state === 'active') {
+      const lowPow = g.power[this.owner].out < g.power[this.owner].use;
+      const full = this.d.superweapon.charge;
+      if (!lowPow && (this.chargeT || 0) < full) {
+        this.chargeT = (this.chargeT || 0) + DT;
+        if (this.chargeT >= full && this.owner === PLAYER) g.eva('siloReady');
+      }
     }
   }
 
@@ -956,7 +973,7 @@ export class Building {
     ctx.restore();
 
     // turret gun
-    if (this.turret) {
+    if (this.turret && this.d.turretSprite) {
       const timg = sprTeam(this.d.turretSprite, this.owner);
       const pv = pivotOf(this.d.turretSprite);
       ctx.save();

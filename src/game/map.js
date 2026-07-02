@@ -6,9 +6,16 @@ import { ECON } from './data.js';
 
 export const T_GRASS = 0, T_DIRT = 1, T_WATER = 2, T_ROCK = 3, T_TREE = 4;
 
+export const MAP_PRESETS = {
+  wasteland: { cn: '荒原对峙', lakes: 3, rocks: 14, groves: 20, oreRich: 1.0 },
+  oasis:     { cn: '绿洲之争', lakes: 6, rocks: 8, groves: 30, oreRich: 1.25 },
+  corridor:  { cn: '铁壁走廊', lakes: 1, rocks: 30, groves: 12, oreRich: 0.9 },
+};
+
 export class GameMap {
-  constructor(seed = 20260702) {
+  constructor(seed = 20260702, presetKey = 'wasteland') {
     this.w = 96; this.h = 96;
+    this.p = MAP_PRESETS[presetKey] || MAP_PRESETS.wasteland;
     this.tiles = new Uint8Array(this.w * this.h);
     this.ore = new Float32Array(this.w * this.h);
     this.bld = new Int32Array(this.w * this.h).fill(-1); // building entity id per cell
@@ -52,7 +59,7 @@ export class GameMap {
         }
     }
     // lakes (avoid base corners)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < this.p.lakes; i++) {
       const bx = 22 + rng() * 52, by = 22 + rng() * 52;
       const rx = 3.5 + rng() * 5, ry = 2.5 + rng() * 4.5;
       for (let cy = (by - ry - 1) | 0; cy <= by + ry + 1; cy++)
@@ -62,13 +69,13 @@ export class GameMap {
         }
     }
     // rock clusters
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < this.p.rocks; i++) {
       const bx = rng() * w, by = rng() * h;
       const n = 2 + (rng() * 4) | 0;
       for (let k = 0; k < n; k++) set((bx + rng() * 4 - 2) | 0, (by + rng() * 4 - 2) | 0, T_ROCK);
     }
     // tree groves
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < this.p.groves; i++) {
       const bx = rng() * w, by = rng() * h;
       const n = 3 + (rng() * 6) | 0;
       for (let k = 0; k < n; k++) {
@@ -95,7 +102,7 @@ export class GameMap {
           const dx = cx - bx, dy = cy - by;
           const d = Math.sqrt(dx * dx + dy * dy);
           if (d < r && this.tiles[cy * w + cx] === T_GRASS) {
-            const amt = ECON.oreCellMax * rich * (1 - d / r * 0.55) * (0.7 + rng() * 0.3);
+            const amt = ECON.oreCellMax * rich * this.p.oreRich * (1 - d / r * 0.55) * (0.7 + rng() * 0.3);
             this.ore[cy * w + cx] = Math.min(ECON.oreCellMax, amt);
             const mx = w - 1 - cx, my = h - 1 - cy;
             if (this.tiles[my * w + mx] === T_GRASS) this.ore[my * w + mx] = this.ore[cy * w + cx];

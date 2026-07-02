@@ -116,7 +116,8 @@ export class HUD {
   updateCursor() {
     const g = this.g;
     let cur = 'default';
-    if (g.mode === 'placing') cur = this.cursors.place;
+    if (g.mode === 'nuke') cur = this.cursors.attack;
+    else if (g.mode === 'placing') cur = this.cursors.place;
     else if (g.mode === 'sell') cur = this.cursors.sell;
     else if (g.mode === 'repair') cur = this.cursors.repair;
     else if (this.attackArmed) cur = this.cursors.attack;
@@ -149,6 +150,14 @@ export class HUD {
         return;
       }
       if (e.button === 0) {
+        if (g.mode === 'nuke') {
+          if (this.nukeSilo && g.launchNuke(this.nukeSilo, this.mouse.wx, this.mouse.wy)) {
+            g.mode = 'normal';
+            this.nukeSilo = null;
+            this.cbSig = '';
+          }
+          return;
+        }
         if (g.mode === 'placing') {
           const cx = (this.mouse.wx / TILE) | 0, cy = (this.mouse.wy / TILE) | 0;
           const d = BUILDINGS[g.placing];
@@ -353,6 +362,7 @@ export class HUD {
         }
         case 'KeyX': this.setMode(g.mode === 'sell' ? 'normal' : 'sell'); break;
         case 'KeyC': this.setMode(g.mode === 'repair' ? 'normal' : 'repair'); break;
+        case 'Period': document.getElementById('btn-idle').click(); break;
         case 'KeyB': {
           // open the engineer build menu; auto-pick the nearest idle engineer if none selected
           let crews = this.selectedUnits().filter(u => u.d.builder);
@@ -377,10 +387,23 @@ export class HUD {
           if (used) { this.cbSig = ''; this.audio.sfx('click'); }
           break;
         }
-        case 'Tab': e.preventDefault(); this.sidebar.cycleTab(); break;
+        case 'Tab': {
+          // cycle through own production buildings (War3-style factory tabbing)
+          e.preventDefault();
+          const facs = g.buildings.filter(b => b.owner === PLAYER && b.hp > 0 && b.state === 'active' && b.trainList().length);
+          if (!facs.length) break;
+          const cur = [...g.selection][0];
+          const idx = facs.indexOf(cur);
+          const next = facs[(idx + 1) % facs.length];
+          g.selection.clear();
+          g.selection.add(next);
+          this.rig.centerOn(next.x, next.y);
+          this.audio.sfx('click');
+          break;
+        }
         case 'Escape':
           if (this.buildMenuOpen) { this.buildMenuOpen = false; this.cbSig = ''; }
-          else if (g.mode !== 'normal') { this.setMode('normal'); g.placing = null; }
+          else if (g.mode !== 'normal') { this.setMode('normal'); g.placing = null; this.nukeSilo = null; }
           else if (this.attackArmed) this.attackArmed = false;
           else if (g.selection.size) g.selection.clear();
           else this.onEsc && this.onEsc();
@@ -417,17 +440,25 @@ export class HUD {
             break;
           }
           // production hotkeys: build menu first, else active sidebar tab
-          const map = { KeyQ: 0, KeyW: 1, KeyE: 2, KeyR: 3, KeyT: 4, KeyY: 5 };
+          const map = { KeyQ: 0, KeyW: 1, KeyE: 2, KeyR: 3, KeyT: 4, KeyY: 5, KeyU: 6, KeyI: 7, KeyO: 8 };
           if (e.code in map && !e.ctrlKey) {
             if (this.buildMenuOpen) {
-              const key = BUILD_MENU[map[e.code]];
+              const bmMap = { ...map, KeyU: 6, KeyI: 7, KeyO: 8 };
+              const key = BUILD_MENU[bmMap[e.code]];
               if (key && g.prereqsMet(key) && g.startProduction(key)) { this.buildMenuOpen = false; this.cbSig = ''; }
               else if (key) this.audio.sfx('deny');
               break;
             }
-            const tabs = { inf: ['rifle', 'rocket'], veh: ['builder', 'buggy', 'harvester', 'tank', 'heavy'] };
-            const key = (tabs[this.sidebar.activeTab] || [])[map[e.code]];
-            if (key) this.sidebar.clickItem(key);
+            // selected factory: QWERTY maps to its train list
+            const sel = [...g.selection];
+            if (sel.length === 1 && sel[0].isBuilding && sel[0].owner === PLAYER && sel[0].state === 'active') {
+              const list = sel[0].trainList();
+              const key = list[map[e.code]];
+              if (key) {
+                if (g.prereqsMet(key) && sel[0].enqueue(g, key)) { this.cbSig = ''; this.audio.sfx('click'); }
+                else this.audio.sfx('deny');
+              }
+            }
           }
           // debug keys
           if (g.debug) {
@@ -445,21 +476,25 @@ export class HUD {
 
   setMode(m) {
     this.g.mode = m;
-    document.getElementById('btn-sell').classList.toggle('on', m === 'sell');
-    document.getElementById('btn-repair').classList.toggle('on', m === 'repair');
+    this.cbSig = '';   // refresh command card highlight states
   }
 
   bindCmdButtons() {
-    document.getElementById('btn-sell').addEventListener('click', () => {
-      if (!this.enabled) return;
-      this.audio.ensure(); this.setMode(this.g.mode === 'sell' ? 'normal' : 'sell'); this.audio.sfx('click');
-    });
-    document.getElementById('btn-repair').addEventListener('click', () => {
-      if (!this.enabled) return;
-      this.audio.ensure(); this.setMode(this.g.mode === 'repair' ? 'normal' : 'repair'); this.audio.sfx('click');
-    });
     document.getElementById('btn-menu').addEventListener('click', () => {
       this.audio.ensure(); this.onEsc && this.onEsc(); this.audio.sfx('click');
+    });
+    document.getElementById('btn-idle').addEventListener('click', () => {
+      if (!this.enabled) return;
+      this.audio.ensure();
+      const g = this.g;
+      const idle = g.units.filter(u => u.owner === PLAYER && u.d.builder && u.hp > 0 && u.state === 'idle');
+      if (!idle.length) { this.audio.sfx('deny'); this.banner('没有空闲的工程车'); return; }
+      this._idleIdx = ((this._idleIdx || 0) + 1) % idle.length;
+      const u = idle[this._idleIdx];
+      g.selection.clear();
+      g.selection.add(u);
+      this.rig.centerOn(u.x, u.y);
+      this.audio.sfx('click');
     });
   }
 
@@ -644,6 +679,10 @@ export class HUD {
         if (e.d.power) rows.push(['电力', (e.d.power > 0 ? '+' : '') + e.d.power, e.d.power > 0 ? '' : 'gold']);
         const low = g.power[PLAYER].out < g.power[PLAYER].use;
         rows.push(['状态', e.state === 'active' ? (low && e.d.power < 0 ? '低电' : '正常') : '施工', low && e.d.power < 0 ? 'red' : '']);
+        if (e.d.superweapon && e.state === 'active') {
+          const pct = Math.min(100, Math.round((e.chargeT || 0) / e.d.superweapon.charge * 100));
+          rows.push(['充能', pct >= 100 ? '就绪' : pct + '%', pct >= 100 ? 'gold' : '']);
+        }
         if (e.trainList && e.trainList().length && e.state === 'active') {
           const head = e.queue[0];
           rows.push(['生产', head ? `${UNITS[head].cn.replace(/ /g, '')} ${Math.round(e.prodT / BUILD_TIME(UNITS[head].cost) * 100)}%` : '空闲']);
@@ -824,6 +863,12 @@ export class HUD {
       if (single.state === 'site') {
         btns.push({ t: '撤', hk: 'X', cls: 'danger', fn: () => { single.startSell(g); this.cbSig = ''; } });
       } else if (single.state === 'active') {
+        if (single.d.superweapon && (single.chargeT || 0) >= single.d.superweapon.charge) {
+          btns.push({
+            t: '射', hk: 'F', cls: 'on danger', title: '发射战略导弹 — 点击后选择全图任意目标',
+            fn: () => { g.mode = 'nuke'; this.nukeSilo = single; this.banner('选择打击目标', 'gold'); },
+          });
+        }
         btns.push({ t: '修', hk: 'C', cls: g.mode === 'repair' ? 'on' : '', fn: () => this.setMode(g.mode === 'repair' ? 'normal' : 'repair') });
         btns.push({ t: '售', hk: 'X', cls: (g.mode === 'sell' ? 'on ' : '') + 'danger', fn: () => this.setMode(g.mode === 'sell' ? 'normal' : 'sell') });
       }

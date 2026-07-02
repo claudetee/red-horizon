@@ -448,5 +448,67 @@
    0.5,
    0.5
   ]
+ },
+ "unit_artillery": {
+  "file": "assets/img/unit_artillery.png",
+  "w": 23,
+  "h": 40,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "bld_tesla": {
+  "file": "assets/img/bld_tesla.png",
+  "w": 36,
+  "h": 51,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 1,
+   "fh": 1
+  }
+ },
+ "bld_silo": {
+  "file": "assets/img/bld_silo.png",
+  "w": 80,
+  "h": 76,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 2,
+   "fh": 2
+  }
+ },
+ "cameo_unit_artillery": {
+  "file": "assets/img/cameo_unit_artillery.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_bld_tesla": {
+  "file": "assets/img/cameo_bld_tesla.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_bld_silo": {
+  "file": "assets/img/cameo_bld_silo.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
  }
 }

@@ -21,6 +21,11 @@ export const WEAPONS = {
                 vs: { inf: 0.6, light: 0.95, heavy: 1.0, building: 0.88 }, sfx: 'cannon2' },
   turretGun:  { dmg: 60, rof: 1.7, range: 6.2, kind: 'shell', speed: 360, splash: 13, burst: 1,
                 vs: { inf: 0.5, light: 1.0, heavy: 1.0, building: 0.6 }, sfx: 'cannon' },
+  artySalvo:  { dmg: 32, rof: 5.2, range: 8.6, kind: 'shell', speed: 175, splash: 24, burst: 4, burstGap: 0.22,
+                arcH: 34, trail: true,
+                vs: { inf: 0.85, light: 0.8, heavy: 0.65, building: 1.35 }, sfx: 'rocket' },
+  teslaZap:   { dmg: 95, rof: 2.6, range: 6.0, kind: 'tesla', chain: 2, chainDmg: 48, burst: 1,
+                vs: { inf: 1.0, light: 1.0, heavy: 1.0, building: 0.5 }, sfx: 'tesla' },
 };
 
 export const BUILDINGS = {
@@ -69,6 +74,18 @@ export const BUILDINGS = {
     fw: 1, fh: 1, sight: 3, sprite: 'bld_repair', buildable: true, hotkey: 'U',
     prereq: ['factory'], repairAura: { range: 105, rate: 9 },
     desc: '自动修理附近的友方载具（消耗资金）。',
+  },
+  tesla: {
+    cn: '特 斯 拉 塔', en: 'TESLA TOWER', cost: 1200, hp: 500, power: -50,
+    fw: 1, fh: 1, sight: 7.5, sprite: 'bld_tesla', buildable: true, hotkey: 'I',
+    prereq: ['radar'], weapon: 'teslaZap',
+    desc: '链式闪电防御塔，无视护甲。断电时完全失效。',
+  },
+  silo: {
+    cn: '导 弹 井', en: 'MISSILE SILO', cost: 2500, hp: 900, power: -75,
+    fw: 2, fh: 2, sight: 4, sprite: 'bld_silo', buildable: true, hotkey: 'O',
+    prereq: ['radar'], superweapon: { charge: 240, dmg: 950, splash: 130 }, unique: true,
+    desc: '战略导弹：充能 4 分钟后可打击全图任意位置。每方限一座。',
   },
 };
 
@@ -119,6 +136,12 @@ export const UNITS = {
     factory: 'factory', hotkey: 'T', kind: 'veh', prereqBld: ['radar'],
     selfRepair: { below: 0.5, rate: 6 },
     desc: '双管重型坦克，需雷达站解锁。被动：低于半血时战场自修。',
+  },
+  artillery: {
+    cn: '火 箭 炮 车', en: 'ROCKET ARTILLERY', cost: 1300, hp: 190, speed: 55, turn: 2.4,
+    sight: 6, armor: 'light', weapon: 'artySalvo', r: 12, sprite: 'unit_artillery',
+    factory: 'factory', hotkey: 'Y', kind: 'veh', prereqBld: ['radar'], minRange: 2.6,
+    desc: '远程火箭齐射，攻城利器。脆弱且有最小射程——保护好它。',
   },
 };
 
@@ -171,6 +194,9 @@ export const EVA = {
   needMoreOre:          { t: '矿脉枯竭，寻找新矿区', cls: '' },
   victory:              { t: '任务完成', cls: 'gold' },
   defeat:               { t: '任务失败', cls: '' },
+  siloReady:            { t: '战略导弹就绪', cls: 'gold' },
+  nukeLaunch:           { t: '战略导弹已发射', cls: 'gold' },
+  nukeIncoming:         { t: '警告：敌方战略导弹来袭', cls: '' },
 };
 
 export const TIPS = [

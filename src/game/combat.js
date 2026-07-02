@@ -20,6 +20,7 @@ export class Combat {
     this.projectiles = [];
     this.particles = [];
     this.tracers = [];
+    this.bolts = [];   // tesla lightning polylines
     // pre-baked glow textures — per-frame createRadialGradient is a frame killer
     this.texFlash = radialTex(64, [[0, 'rgba(255,240,190,1)'], [0.5, 'rgba(255,160,60,0.62)'], [1, 'rgba(255,120,40,0)']]);
     this.texFire = radialTex(64, [[0, 'rgba(255,205,80,0.92)'], [0.5, 'rgba(255,120,40,0.55)'], [1, 'rgba(200,60,20,0)']]);
@@ -43,10 +44,37 @@ export class Combat {
     } else if (w.kind === 'rocket') {
       const ang = Math.atan2(ty - sy, tx - sx) + (g.rng() - .5) * 0.5;
       this.projectiles.push({ kind: 'rocket', x: sx, y: sy, ang, spd: w.speed * 0.45, target, tx, ty, life: 3.2, w, vetMul, owner: shooter.owner, shooter });
+    } else if (w.kind === 'tesla') {
+      this.zap(shooter, w, sx, sy, target, vetMul);
     }
-    this.muzzle(sx, sy, Math.atan2(ty - sy, tx - sx), w.kind !== 'bullet');
+    if (w.kind !== 'tesla') this.muzzle(sx, sy, Math.atan2(ty - sy, tx - sx), w.kind !== 'bullet');
     g.audio.sfx(w.sfx, { x: sx, y: sy });
     g.audio.noteCombat();
+  }
+
+  // chain lightning: primary target, then arcs to nearby enemies
+  zap(shooter, w, sx, sy, target, vetMul = 1) {
+    const g = this.game;
+    this.applyDamage(target, w.dmg * vetMul * (w.vs[target.armorClass()] ?? 1), shooter);
+    this.bolts.push({ pts: [[sx, sy], [target.x, target.y]], life: 0.22, max: 0.22 });
+    this.spark(target.x, target.y, 4);
+    let prev = target;
+    const hit = new Set([target.id]);
+    for (let c = 0; c < (w.chain || 0); c++) {
+      let best = null, bd = Infinity;
+      g.eachEntityNear(prev.x, prev.y, 3 * TILE, e => {
+        if (e.owner === shooter.owner || e.hp <= 0 || hit.has(e.id)) return;
+        const d = dist2(prev.x, prev.y, e.x, e.y);
+        if (d < bd && d < (3 * TILE) ** 2) { bd = d; best = e; }
+      });
+      if (!best) break;
+      hit.add(best.id);
+      this.applyDamage(best, w.chainDmg * vetMul * (w.vs[best.armorClass()] ?? 1), shooter);
+      this.bolts.push({ pts: [[prev.x, prev.y], [best.x, best.y]], life: 0.2, max: 0.2 });
+      this.spark(best.x, best.y, 3);
+      prev = best;
+    }
+    g.shakeAdd(1.5);
   }
 
   update() {
@@ -59,6 +87,7 @@ export class Combat {
         const k = Math.min(1, p.t / p.dur);
         p.x = p.sx + (p.tx - p.sx) * k;
         p.y = p.sy + (p.ty - p.sy) * k;
+        if (p.w.trail && (g.tick & 1) === 0) this.puff(p.x, p.y - Math.sin(k * Math.PI) * (p.w.arcH || 10), 'smoke', 2.6, 0.5);
         if (k >= 1) {
           this.projectiles.splice(i, 1);
           this.impact(p.tx, p.ty, p.w, p.shooter, p.vetMul);
@@ -84,6 +113,11 @@ export class Combat {
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       this.tracers[i].life -= DT;
       if (this.tracers[i].life <= 0) this.tracers.splice(i, 1);
+    }
+    // lightning bolts
+    for (let i = this.bolts.length - 1; i >= 0; i--) {
+      this.bolts[i].life -= DT;
+      if (this.bolts[i].life <= 0) this.bolts.splice(i, 1);
     }
     // particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -188,12 +222,44 @@ export class Combat {
     }
     ctx.restore();
 
+    // tesla bolts — jagged, regenerated每帧 for flicker
+    if (this.bolts.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (const b of this.bolts) {
+        const k = b.life / b.max;
+        const [a0, a1] = b.pts;
+        const x0 = (a0[0] - cam.x) * z, y0 = (a0[1] - cam.y) * z;
+        const x1 = (a1[0] - cam.x) * z, y1 = (a1[1] - cam.y) * z;
+        const segs = 7;
+        const pts = [[x0, y0]];
+        const nx = -(y1 - y0), ny = (x1 - x0);
+        const nl = Math.hypot(nx, ny) || 1;
+        for (let s = 1; s < segs; s++) {
+          const t = s / segs;
+          const off = (Math.random() - 0.5) * 14 * z * k;
+          pts.push([x0 + (x1 - x0) * t + nx / nl * off, y0 + (y1 - y0) * t + ny / nl * off]);
+        }
+        pts.push([x1, y1]);
+        for (const [wd, col] of [[4.5 * z, `rgba(46,230,214,${0.30 * k})`], [1.6 * z, `rgba(240,255,255,${0.9 * k})`]]) {
+          ctx.strokeStyle = col;
+          ctx.lineWidth = wd;
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let s = 1; s < pts.length; s++) ctx.lineTo(pts[s][0], pts[s][1]);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
     // projectiles
     for (const p of this.projectiles) {
       const px = (p.x - cam.x) * z, py = (p.y - cam.y) * z;
       if (p.kind === 'shell') {
         const k = p.t / p.dur;
-        const arc = Math.sin(k * Math.PI) * 10 * z;
+        const arc = Math.sin(k * Math.PI) * (p.w.arcH || 10) * z;
         ctx.fillStyle = 'rgba(20,22,26,0.35)';
         ctx.beginPath(); ctx.ellipse(px, py, 2.6 * z, 1.6 * z, 0, 0, 7); ctx.fill();
         ctx.fillStyle = '#2b2f36';

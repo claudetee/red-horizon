@@ -22,7 +22,7 @@ export class Game {
     this.seed = opts.seed ?? 20260702;
     this.rng = mulberry32(this.seed ^ 0x9e3779b9);
 
-    this.map = new GameMap(this.seed);
+    this.map = new GameMap(this.seed, opts.mapKey || 'wasteland');
     this.map.buildTerrainCanvas();
     this.map.buildOreCanvas();
     this.pathfinder = new Pathfinder(this.map);
@@ -36,6 +36,7 @@ export class Game {
     this.husks = [];
     this.decals = [];
     this.tracks = [];
+    this.nukes = [];
     this.delayed = [];
     this.introT = 1.4;
 
@@ -253,6 +254,42 @@ export class Game {
     if (this.tracks.length > 260) this.tracks.shift();
   }
 
+  // ---------- strategic missile ----------
+  launchNuke(silo, tx, ty) {
+    const sw = silo.d.superweapon;
+    if ((silo.chargeT || 0) < sw.charge) return false;
+    silo.chargeT = 0;
+    this.nukes.push({ x: tx, y: ty, t: 3.6, max: 3.6, owner: silo.owner, dmg: sw.dmg, splash: sw.splash });
+    this.pingAt(tx, ty);
+    this.lastEvent = { x: tx, y: ty };
+    this.eva(silo.owner === PLAYER ? 'nukeLaunch' : 'nukeIncoming');
+    this.audio.sfx('bigboom', { x: tx, y: ty, vol: 0.3 });
+    return true;
+  }
+
+  detonateNuke(n) {
+    const c = this.combat;
+    this.shakeAdd(18);
+    c.explosion(n.x, n.y, 2.6);
+    for (let i = 0; i < 5; i++) {
+      const a = this.rng() * Math.PI * 2, r = this.rng() * n.splash * 0.7;
+      this.delayed.push({ at: this.tick + 2 + i * 3, fn: () => c.explosion(n.x + Math.cos(a) * r, n.y + Math.sin(a) * r, 1.4 + this.rng()) });
+    }
+    this.addDecal(n.x, n.y, 2.2);
+    this.addDecal(n.x + 30, n.y - 20, 1.6);
+    this.addDecal(n.x - 26, n.y + 24, 1.5);
+    this.audio.sfx('bigboom', { x: n.x, y: n.y });
+    const seen = new Set();
+    this.eachEntityNear(n.x, n.y, n.splash + 90, e => {
+      if (e.hp <= 0 || seen.has(e.id)) return;
+      seen.add(e.id);
+      const rr = e.isBuilding ? e.selRadius * 0.7 : e.d.r;
+      const d = Math.max(0, dist(n.x, n.y, e.x, e.y) - rr);
+      if (d > n.splash) return;
+      e.takeDamage(n.dmg * (1 - 0.72 * (d / n.splash)), null);
+    });
+  }
+
   // ---------- economy / power ----------
   addCredits(owner, amt) { this.credits[owner] += amt; }
 
@@ -288,6 +325,7 @@ export class Game {
   prereqsMet(key) {
     const isB = !!BUILDINGS[key];
     const d = isB ? BUILDINGS[key] : UNITS[key];
+    if (isB && d.unique && this.buildings.some(b => b.owner === PLAYER && b.key === key && b.hp > 0)) return false;
     if (isB && !this.buildings.some(b => b.owner === PLAYER && b.key === 'conyard' && b.hp > 0)) return false;
     if (!isB) {
       const fac = UNITS[key].factory;
@@ -351,7 +389,7 @@ export class Game {
     this.hash.queryCircle(x, y, r + 84, fn);
   }
 
-  findNearestEnemy(owner, x, y, range) {
+  findNearestEnemy(owner, x, y, range, minD = 0) {
     let best = null, bd = Infinity;
     this.eachEntityNear(x, y, range, e => {
       if (e.owner === owner || e.hp <= 0 || e.dead) return;
@@ -360,6 +398,7 @@ export class Game {
       if (owner === PLAYER && !this.fog.isVisiblePx(e.x, e.y)) return;
       const rr = e.isBuilding ? e.selRadius * 0.8 : e.d.r;
       const d = dist(x, y, e.x, e.y) - rr;
+      if (d < minD) return;
       if (d <= range && d < bd) { bd = d; best = e; }
     });
     return best;
@@ -539,6 +578,13 @@ export class Game {
       this.tracks[i].ttl -= DT;
       if (this.tracks[i].ttl <= 0) this.tracks.splice(i, 1);
     }
+    for (let i = this.nukes.length - 1; i >= 0; i--) {
+      this.nukes[i].t -= DT;
+      if (this.nukes[i].t <= 0) {
+        const n = this.nukes.splice(i, 1)[0];
+        this.detonateNuke(n);
+      }
+    }
     if (this.introT > 0) this.introT -= DT;
     if (this.shake > 0) this.shake = Math.max(0, this.shake - 26 * DT);
   }
@@ -658,6 +704,32 @@ export class Game {
 
     // projectiles & particles
     this.combat.draw(ctx, cam);
+
+    // incoming strategic missiles: target reticle + descending streak
+    for (const n of this.nukes) {
+      const px = (n.x - cam.x) * z, py = (n.y - cam.y) * z;
+      const blink = (this.tick % 14) < 8;
+      ctx.strokeStyle = blink ? 'rgba(255,60,50,0.95)' : 'rgba(255,60,50,0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px, py, 26 * z, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, py, 12 * z, 0, 7); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px - 34 * z, py); ctx.lineTo(px + 34 * z, py);
+      ctx.moveTo(px, py - 34 * z); ctx.lineTo(px, py + 34 * z);
+      ctx.stroke();
+      if (n.t < 0.8) {
+        const k = n.t / 0.8;
+        const my = py - k * 620;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(255,200,120,${0.9 - k * 0.4})`;
+        ctx.lineWidth = 3.4 * z;
+        ctx.beginPath(); ctx.moveTo(px, my - 90); ctx.lineTo(px, my); ctx.stroke();
+        ctx.fillStyle = '#fff2d0';
+        ctx.beginPath(); ctx.arc(px, my, 3.4 * z, 0, 7); ctx.fill();
+        ctx.restore();
+      }
+    }
 
     // ground markers
     for (const mk of this.markers) {

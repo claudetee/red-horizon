@@ -52,11 +52,11 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 
-function newGame(difficulty) {
+function newGame(difficulty, mapKey = 'wasteland') {
   cancelAnimationFrame(raf);
   const cv = $('game');
   const seed = params.has('seed') ? Number(params.get('seed')) : ((Math.random() * 1e9) | 0);
-  game = new Game(cv, audio, { difficulty, seed, debug: DEBUG });
+  game = new Game(cv, audio, { difficulty, seed, mapKey, debug: DEBUG });
   audio.game = game;
   audio.combatHeat = 0;
   if ('speechSynthesis' in window) { try { speechSynthesis.cancel(); } catch (e) {} }
@@ -163,7 +163,8 @@ $('bt-brief-back').addEventListener('click', () => { audio.sfx('click'); showScr
 $('bt-launch').addEventListener('click', () => {
   audio.ensure(); audio.sfx('ready');
   const diff = document.querySelector('input[name=diff]:checked').value;
-  newGame(diff);
+  const mapKey = document.querySelector('input[name=map]:checked').value;
+  newGame(diff, mapKey);
 });
 $('bt-resume').addEventListener('click', () => { audio.sfx('click'); game.paused = false; showScreen(null); });
 $('bt-restart').addEventListener('click', () => { audio.sfx('click'); showScreen('brief'); });

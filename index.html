@@ -19,52 +19,36 @@
       <div id="objective-pin"></div>
       <div id="tooltip" class="hidden"></div>
 
+      <div id="topbar">
+        <span class="tb-brand">RED HORIZON</span>
+        <span class="tb-item" id="creditbar" title="资金">$<span id="credits">0</span></span>
+        <div class="tb-power" title="电力">
+          <span class="pw-ico">⚡</span>
+          <div id="powerbar"><div id="powerfill"></div><div id="powermark"></div></div>
+          <span id="powertext">0/0</span>
+        </div>
+        <span class="tb-item" id="clockbar" title="战斗时间">00:00</span>
+        <button id="btn-menu" class="tb-btn" title="菜单 (Esc)">☰</button>
+      </div>
+
       <div id="cmdbar">
+        <div id="radarbox">
+          <canvas id="minimap" width="200" height="200"></canvas>
+          <div id="radar-offline"><span>RADAR OFFLINE</span><em>雷达离线</em></div>
+          <button id="btn-idle" title="选中空闲工程车 (.)">🚜</button>
+        </div>
         <div id="cb-portrait">
           <div id="cb-face-frame"><canvas id="cb-face" width="100" height="86"></canvas><span id="cb-count" class="hidden"></span></div>
           <div id="cb-name">—</div>
         </div>
         <div id="cb-mid">
-          <div id="cb-idle" class="cb-idle">RED HORIZON 作战指挥系统 · 选择部队以下达指令</div>
+          <div id="cb-idle" class="cb-idle">RED HORIZON 作战指挥系统 · 选择部队以下达指令 · B 建造</div>
           <div id="cb-stats"></div>
           <div id="cb-multi"></div>
         </div>
         <div id="cb-cmds"></div>
       </div>
     </div>
-
-    <aside id="sidebar">
-      <div id="side-title"><span class="rh-logo">RED HORIZON</span><span class="rh-sub">作战指挥台</span></div>
-
-      <div id="radarbox">
-        <canvas id="minimap" width="200" height="200"></canvas>
-        <div id="radar-offline"><span>RADAR OFFLINE</span><em>雷达离线</em></div>
-      </div>
-
-      <div id="statusrow">
-        <div id="creditbar" title="资金">$<span id="credits">0</span></div>
-        <div id="clockbar" title="战斗时间">00:00</div>
-      </div>
-
-      <div id="powerrow" title="电力">
-        <span class="pw-ico">⚡</span>
-        <div id="powerbar"><div id="powerfill"></div><div id="powermark"></div></div>
-        <span id="powertext">0/0</span>
-      </div>
-
-      <div id="tabs">
-        <button class="tab active" data-tab="inf">步兵</button>
-        <button class="tab" data-tab="veh">载具</button>
-      </div>
-
-      <div id="buildgrid"></div>
-
-      <div id="cmdrow">
-        <button id="btn-repair" class="cmd" title="维修模式 (C)">🔧</button>
-        <button id="btn-sell" class="cmd" title="出售建筑 (X)">$↩</button>
-        <button id="btn-menu" class="cmd" title="菜单 (Esc)">☰</button>
-      </div>
-    </aside>
   </div>
 
   <!-- overlay screens -->
@@ -105,6 +89,12 @@
         <label><input type="radio" name="diff" value="normal" checked>老 兵</label>
         <label><input type="radio" name="diff" value="hard">铁 幕</label>
       </div>
+      <div class="diff-row">
+        <span>作战区域：</span>
+        <label><input type="radio" name="map" value="wasteland" checked>荒原对峙</label>
+        <label><input type="radio" name="map" value="oasis">绿洲之争</label>
+        <label><input type="radio" name="map" value="corridor">铁壁走廊</label>
+      </div>
       <div class="btn-row">
         <button id="bt-launch" class="mbtn primary">发 起 进 攻</button>
         <button id="bt-brief-back" class="mbtn">返 回</button>
@@ -116,12 +106,13 @@
     <div class="panel wide">
       <h2>作 战 手 册 <span class="en">FIELD MANUAL</span></h2>
       <div class="howto-grid">
-        <div><b>左键</b> 选择 / 框选部队</div><div><b>右键</b> 移动 / 攻击 / 采矿</div>
-        <div><b>A + 左键</b> 攻击移动</div><div><b>S</b> 停止 &nbsp; <b>G</b> 警戒</div>
+        <div><b>左键</b> 选择 / 框选部队</div><div><b>右键</b> 移动 / 攻击 / 采矿 / 修建</div>
+        <div><b>A + 左键</b> 攻击移动</div><div><b>S</b> 停止 &nbsp; <b>G</b> 警戒 &nbsp; <b>F</b> 技能</div>
+        <div><b>B</b> 工程车建造菜单</div><div><b>选中建筑</b> 命令卡生产单位 (QWERTY)</div>
+        <div><b>Tab</b> 循环选生产建筑</div><div><b>.</b> 选中空闲工程车</div>
         <div><b>Ctrl+1~9</b> 编队 &nbsp; <b>1~9</b> 选编队</div><div><b>双击</b> 选中屏幕内同类单位</div>
-        <div><b>B</b> 工程车建造菜单</div><div><b>V</b> 采矿车自动采矿</div>
         <div><b>方向键 / 鼠标边缘</b> 滚动视角</div><div><b>滚轮 / 中键拖拽</b> 缩放 / 平移</div>
-        <div><b>Space</b> 跳转最近战报</div><div><b>H</b> 回到基地</div>
+        <div><b>Space</b> 跳转最近战报</div><div><b>H</b> 回基地 &nbsp; <b>V</b> 自动采矿</div>
         <div><b>C</b> 维修 &nbsp; <b>X</b> 出售</div><div><b>Esc</b> 菜单 / 取消</div>
       </div>
       <div class="btn-row"><button id="bt-howto-back" class="mbtn">返 回</button></div>

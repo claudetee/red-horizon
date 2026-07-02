@@ -217,6 +217,13 @@ export class AudioSys {
         this._tone('square', 620, 660, 0.07, out, 0.02, 0.25);
         break;
       }
+      case 'tesla': {
+        const out = this._chain(opts, 0.3); out.gain.value *= 0.65;
+        this._tone('sawtooth', 2800, 180, 0.16, out, 0, 0.5);
+        this._noise(0.2, 'highpass', 3200, 1.2, out);
+        this._tone('square', 90, 55, 0.22, out, 0, 0.35);
+        break;
+      }
       case 'ack2': {
         const out = this._chain(opts, 0.15); out.gain.value *= 0.4;
         this._noise(0.03, 'highpass', 3000, 1, out);
