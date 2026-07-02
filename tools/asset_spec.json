@@ -1,0 +1,289 @@
+{
+  "raw_dir": "../assets/raw",
+  "out_dir": "../assets/img",
+  "sprites_json": "../assets/sprites.json",
+  "default_model": "openai/gpt-image-1",
+  "default_quality": "high",
+  "style_blocks": {
+    "unit": "Retro 1990s real-time strategy PC game sprite, in the style of classic Command & Conquer and Red Alert era games. 16-bit pixel-art aesthetic with crisp chunky pixels and a clean readable silhouette. Viewed from directly overhead, top-down. Single hard sunlight from the top-left. Muted cold military palette: gunmetal grey-blue armor plating, olive-drab details, weathered battle-worn metal with rivets and panel lines, and bright TEAL (#2EE6D6) accent panels and markings. Subject perfectly centered, filling about 70% of the frame. No text, no watermark, no UI, no frame. The background must be fully transparent empty alpha with absolutely nothing painted around the subject: NO drop shadow, NO cast shadow, NO dark silhouette copy behind or under the subject, NO ground plate — the sprite gets rotated in-engine, so shading on the subject body only.",
+    "building": "Retro 1990s real-time strategy PC game sprite, in the style of classic Command & Conquer and Red Alert era games. 16-bit pixel-art aesthetic with crisp chunky pixels and a clean readable silhouette. Viewed from directly overhead, top-down at a slight 3/4 angle. Single hard sunlight from the top-left. Muted cold military palette: gunmetal grey-blue armor plating, olive-drab details, weathered battle-worn metal with rivets and panel lines, and bright TEAL (#2EE6D6) accent panels and markings. Subject perfectly centered, filling about 78% of the frame. Plain background. No text, no watermark, no UI, no frame. The structure sits on a weathered square concrete foundation pad whose edges are aligned with the image axes (not rotated), with a subtle short drop shadow toward the bottom-right baked in.",
+    "prop": "Retro 1990s real-time strategy PC game environment sprite, 16-bit pixel-art aesthetic, crisp chunky pixels. Viewed from directly overhead, top-down. Single hard sunlight from the top-left. Muted natural palette that fits a dry steppe battlefield. Subject centered, filling about 72% of the frame. Plain background. No text, no watermark. Strictly NO ground shadow.",
+    "terrain": "Seamless tileable terrain texture for a retro 1990s real-time strategy PC game, viewed from directly overhead (true top-down orthographic). 16-bit pixel-art aesthetic. Muted, low-contrast, evenly lit with no vignette and no bright hotspots, so game units stay readable on top of it. The texture must tile perfectly: the left and right edges match each other exactly, and the top and bottom edges match each other exactly. No text, no watermark."
+  },
+  "assets": {
+    "unit_rifle": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "One tiny infantry rifleman seen from directly above, standing, holding an assault rifle pointing UP toward 12 o'clock. Helmet and small backpack, gunmetal-blue fatigues, teal shoulder markings. Chunky readable proportions with thick limbs, high contrast.",
+      "process": {
+        "type": "unit",
+        "size": 20,
+        "quantize": 24
+      }
+    },
+    "unit_rocket": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "One tiny infantry soldier seen from directly above, standing, aiming a bulky shoulder-mounted rocket launcher tube pointing UP toward 12 o'clock. Dark visor helmet, armored vest with red trim, teal chest marking. Chunky readable proportions with thick limbs, high contrast.",
+      "process": {
+        "type": "unit",
+        "size": 20,
+        "quantize": 24
+      }
+    },
+    "unit_buggy": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "A fast military scout attack buggy seen from directly above with its front pointing UP toward 12 o'clock: open-top dune-buggy frame, roll cage, four big knobby off-road tires, a small pintle-mounted machine gun, whip antenna.",
+      "process": {
+        "type": "unit",
+        "size": 30
+      }
+    },
+    "unit_harvester": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "A heavy ore-harvester truck seen from directly above with its front pointing UP toward 12 o'clock: massive industrial mining vehicle, wide toothed intake scoop at the front, big open-top cargo hopper at the rear filled with glowing golden ore crystals, armored driver cab, chunky wheels.",
+      "process": {
+        "type": "unit",
+        "size": 42
+      }
+    },
+    "unit_tank_hull": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "A medium battle tank HULL ONLY seen from directly above with its front pointing UP toward 12 o'clock. There is NO turret: instead show a flat circular turret-ring socket recessed at the hull center. Twin parallel tank treads, angular sloped armor plates, rear engine grille, tow hooks.",
+      "process": {
+        "type": "unit",
+        "size": 34
+      }
+    },
+    "unit_tank_gun": {
+      "style": "unit",
+      "background": "transparent",
+      "pivot": [
+        0.5,
+        0.62
+      ],
+      "prompt": "A medium tank TURRET ONLY seen from directly above, detached component on a plain background: compact angular armored turret with one long cannon barrel with a muzzle brake pointing UP toward 12 o'clock, closed teal hatch on top. The round turret body sits at the exact center of the frame with the barrel extending upward from it.",
+      "process": {
+        "type": "unit",
+        "size": 40
+      }
+    },
+    "unit_heavy_hull": {
+      "style": "unit",
+      "background": "transparent",
+      "prompt": "A super-heavy assault tank HULL ONLY seen from directly above with its front pointing UP toward 12 o'clock. There is NO turret: instead show a flat circular turret-ring socket recessed at the hull center. FOUR parallel tank treads, two on each side, thick layered riveted armor plates, massive and imposing silhouette.",
+      "process": {
+        "type": "unit",
+        "size": 46
+      }
+    },
+    "unit_heavy_gun": {
+      "style": "unit",
+      "background": "transparent",
+      "pivot": [
+        0.5,
+        0.64
+      ],
+      "prompt": "A super-heavy tank TURRET ONLY seen from directly above, detached component on a plain background: broad armored turret with TWIN parallel long cannon barrels pointing UP toward 12 o'clock, small teal sensor dome on top. The turret body sits at the exact center of the frame with both barrels extending upward from it.",
+      "process": {
+        "type": "unit",
+        "size": 52
+      }
+    },
+    "bld_conyard": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A Construction Yard for a retro RTS: a large industrial construction command facility with a tall yellow gantry crane, a half-built steel frame section, stacked girders and supply crates, floodlight masts, teal accent panels on the main hall.",
+      "process": {
+        "type": "building",
+        "size": 118
+      },
+      "meta": {
+        "fw": 3,
+        "fh": 3
+      }
+    },
+    "bld_power": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A Power Plant for a retro RTS: compact fortified power station with two fat cylindrical cooling stacks venting a faint wisp of steam, glowing TEAL energy coils and transformer fins between them, thick power cables running to the pad.",
+      "process": {
+        "type": "building",
+        "size": 82
+      },
+      "meta": {
+        "fw": 2,
+        "fh": 2
+      }
+    },
+    "bld_refinery": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "An Ore Refinery for a retro RTS: industrial ore-processing plant with one large cylindrical storage silo with a glowing golden ore-level window strip, a smelter block with a glowing furnace vent, external pipes, and an open unloading dock ramp at the front-bottom of the pad sized for a truck to park on.",
+      "process": {
+        "type": "building",
+        "size": 118
+      },
+      "meta": {
+        "fw": 3,
+        "fh": 3
+      }
+    },
+    "bld_barracks": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "An Infantry Barracks for a retro RTS: a reinforced military bunker-barracks with a sandbagged entrance at the bottom edge, a small muster yard, a tall pole flying a small teal flag, ammo crates and a target dummy.",
+      "process": {
+        "type": "building",
+        "size": 80
+      },
+      "meta": {
+        "fw": 2,
+        "fh": 2
+      }
+    },
+    "bld_factory": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A War Factory for a retro RTS: a big armored vehicle assembly plant with a wide roll-up bay door at the bottom front marked with yellow-black hazard stripes, overhead crane rails on the roof, a faint welding-spark glow from inside the slightly open door, ventilation stacks.",
+      "process": {
+        "type": "building",
+        "size": 118
+      },
+      "meta": {
+        "fw": 3,
+        "fh": 3
+      }
+    },
+    "bld_radar": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A Radar Dome station for a retro RTS: reinforced bunker base with a large white geodesic radome dome and a separate small rotating dish antenna mounted beside it, blinking teal status lights, cable conduits.",
+      "process": {
+        "type": "building",
+        "size": 82
+      },
+      "meta": {
+        "fw": 2,
+        "fh": 2
+      }
+    },
+    "bld_turret": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A defensive gun turret BASE PLATFORM ONLY for a retro RTS, no gun mounted: a small round armored turret socket ring with bolts on a square concrete pad, low profile, a few sandbags at the corners.",
+      "process": {
+        "type": "building",
+        "size": 38
+      },
+      "meta": {
+        "fw": 1,
+        "fh": 1
+      }
+    },
+    "bld_turret_gun": {
+      "style": "unit",
+      "background": "transparent",
+      "pivot": [
+        0.5,
+        0.6
+      ],
+      "prompt": "An anti-tank gun turret HEAD ONLY seen from directly above, detached component on a plain background: armored gun mount housing with one heavy cannon barrel with muzzle brake pointing UP toward 12 o'clock, teal targeting sensor. The mount body sits at the exact center of the frame with the barrel extending upward.",
+      "process": {
+        "type": "unit",
+        "size": 44
+      }
+    },
+    "prop_ore1": {
+      "style": "prop",
+      "background": "transparent",
+      "prompt": "A dense cluster of jagged glowing GOLDEN-AMBER ore crystals growing out of cracked ground, seen from directly above. Bright warm inner glow, sharp faceted edges.",
+      "process": {
+        "type": "prop",
+        "size": 34
+      }
+    },
+    "prop_ore2": {
+      "style": "prop",
+      "background": "transparent",
+      "prompt": "A small sparse cluster of jagged glowing GOLDEN-AMBER ore crystals, a few separate shards, seen from directly above. Warm inner glow, sharp faceted edges.",
+      "process": {
+        "type": "prop",
+        "size": 26
+      }
+    },
+    "prop_tree1": {
+      "style": "prop",
+      "background": "transparent",
+      "prompt": "A single hardy steppe tree seen from directly above: a roughly circular canopy of dark olive-green foliage with rust-orange autumn patches, hints of branches radiating from the center. The sprite must be isolated on a fully transparent background: absolutely NO ground patch, NO soil square, NO grass tile, NO terrain of any kind painted under or around the subject — only the subject itself with empty transparency around it.",
+      "process": {
+        "type": "prop",
+        "size": 46
+      }
+    },
+    "prop_tree2": {
+      "style": "prop",
+      "background": "transparent",
+      "prompt": "A single windswept dry steppe tree seen from directly above: a sparse irregular canopy of dusty olive and rust-brown foliage, visible gnarled branches radiating from the center. The sprite must be isolated on a fully transparent background: absolutely NO ground patch, NO soil square, NO grass tile, NO terrain of any kind painted under or around the subject — only the subject itself with empty transparency around it.",
+      "process": {
+        "type": "prop",
+        "size": 42
+      }
+    },
+    "prop_rock": {
+      "style": "prop",
+      "background": "transparent",
+      "prompt": "A tight cluster of grey weathered boulders seen from directly above, sharp top-left highlights, cool grey tones with subtle moss hints. The sprite must be isolated on a fully transparent background: absolutely NO ground patch, NO soil square, NO grass tile, NO terrain of any kind painted under or around the subject — only the subject itself with empty transparency around it.",
+      "process": {
+        "type": "prop",
+        "size": 42
+      }
+    },
+    "ter_grass": {
+      "style": "terrain",
+      "background": "opaque",
+      "prompt": "Dry steppe grassland: muted olive-tan dead grass with subtle darker patches, sparse tiny stones and grass tufts.",
+      "process": {
+        "type": "terrain",
+        "size": 128,
+        "quantize": 26
+      }
+    },
+    "ter_dirt": {
+      "style": "terrain",
+      "background": "opaque",
+      "prompt": "Cracked dry earth and packed mud, medium-dark brown, with fine even crack patterns and small pebbles distributed uniformly. No long straight lines, no ruts, no band patterns — uniform organic texture across the whole image.",
+      "process": {
+        "type": "terrain",
+        "size": 128,
+        "quantize": 24
+      }
+    },
+    "ter_water": {
+      "style": "terrain",
+      "background": "opaque",
+      "prompt": "Deep dark slate-blue open water with subtle low-contrast wave ripples and faint foam flecks.",
+      "process": {
+        "type": "terrain",
+        "size": 128,
+        "quantize": 20
+      }
+    },
+    "title_art": {
+      "model": "openai/gpt-image-2",
+      "background": "auto",
+      "aspect": "3:2",
+      "resolution": "2K",
+      "prompt": "Retro 1990s PC strategy video game box art in gritty airbrushed painted style: a dramatic blood-red horizon at dusk over a scorched steppe battlefield. On the left, silhouettes of advancing heavy battle tanks with glowing teal headlights and teal squad markings; on the right, looming crimson enemy armor and a radar dome silhouette. Dark storm clouds, embers and smoke in the air, dramatic rim lighting. Bold cinematic composition with calmer open sky space at the top center reserved for a title logo. Absolutely NO text, NO letters, NO logos, NO watermark anywhere in the image.",
+      "process": {
+        "type": "title",
+        "width": 1440,
+        "quantize": 160,
+        "dither": true
+      }
+    }
+  }
+}

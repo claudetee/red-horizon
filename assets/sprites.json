@@ -1,0 +1,255 @@
+{
+ "unit_tank_hull": {
+  "file": "assets/img/unit_tank_hull.png",
+  "w": 24,
+  "h": 36,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "unit_rifle": {
+  "file": "assets/img/unit_rifle.png",
+  "w": 15,
+  "h": 22,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "unit_rocket": {
+  "file": "assets/img/unit_rocket.png",
+  "w": 14,
+  "h": 22,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "unit_buggy": {
+  "file": "assets/img/unit_buggy.png",
+  "w": 21,
+  "h": 29,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "unit_harvester": {
+  "file": "assets/img/unit_harvester.png",
+  "w": 29,
+  "h": 44,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "unit_tank_gun": {
+  "file": "assets/img/unit_tank_gun.png",
+  "w": 21,
+  "h": 32,
+  "pivot": [
+   0.5,
+   0.62
+  ]
+ },
+ "unit_heavy_hull": {
+  "file": "assets/img/unit_heavy_hull.png",
+  "w": 34,
+  "h": 41,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "unit_heavy_gun": {
+  "file": "assets/img/unit_heavy_gun.png",
+  "w": 30,
+  "h": 54,
+  "pivot": [
+   0.5,
+   0.64
+  ]
+ },
+ "bld_conyard": {
+  "file": "assets/img/bld_conyard.png",
+  "w": 118,
+  "h": 111,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 3,
+   "fh": 3
+  }
+ },
+ "bld_power": {
+  "file": "assets/img/bld_power.png",
+  "w": 82,
+  "h": 77,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 2,
+   "fh": 2
+  }
+ },
+ "bld_refinery": {
+  "file": "assets/img/bld_refinery.png",
+  "w": 118,
+  "h": 110,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 3,
+   "fh": 3
+  }
+ },
+ "bld_barracks": {
+  "file": "assets/img/bld_barracks.png",
+  "w": 78,
+  "h": 80,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 2,
+   "fh": 2
+  }
+ },
+ "bld_factory": {
+  "file": "assets/img/bld_factory.png",
+  "w": 118,
+  "h": 106,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 3,
+   "fh": 3
+  }
+ },
+ "bld_radar": {
+  "file": "assets/img/bld_radar.png",
+  "w": 81,
+  "h": 82,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 2,
+   "fh": 2
+  }
+ },
+ "bld_turret": {
+  "file": "assets/img/bld_turret.png",
+  "w": 36,
+  "h": 34,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 1,
+   "fh": 1
+  }
+ },
+ "bld_turret_gun": {
+  "file": "assets/img/bld_turret_gun.png",
+  "w": 23,
+  "h": 46,
+  "pivot": [
+   0.5,
+   0.6
+  ]
+ },
+ "prop_ore1": {
+  "file": "assets/img/prop_ore1.png",
+  "w": 27,
+  "h": 33,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "prop_ore2": {
+  "file": "assets/img/prop_ore2.png",
+  "w": 24,
+  "h": 27,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "prop_tree1": {
+  "file": "assets/img/prop_tree1.png",
+  "w": 41,
+  "h": 48,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "prop_tree2": {
+  "file": "assets/img/prop_tree2.png",
+  "w": 39,
+  "h": 43,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "prop_rock": {
+  "file": "assets/img/prop_rock.png",
+  "w": 44,
+  "h": 35,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "ter_grass": {
+  "file": "assets/img/ter_grass.png",
+  "w": 128,
+  "h": 128,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "ter_dirt": {
+  "file": "assets/img/ter_dirt.png",
+  "w": 128,
+  "h": 128,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "ter_water": {
+  "file": "assets/img/ter_water.png",
+  "w": 128,
+  "h": 128,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "title_art": {
+  "file": "assets/img/title_art.png",
+  "w": 1440,
+  "h": 960,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ }
+}
