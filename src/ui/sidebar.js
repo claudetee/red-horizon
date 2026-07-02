@@ -190,7 +190,8 @@ export class Sidebar {
       }
       it.rdy.style.display = (active && slot.ready) ? '' : 'none';
       it.el.classList.toggle('ready', !!(active && slot.ready));
-      if (cat !== 'build' && queuedN > 1) {
+      const showCnt = cat !== 'build' && (active ? queuedN > 1 : queuedN >= 1);
+      if (showCnt) {
         it.cnt.style.display = '';
         it.cnt.textContent = 'x' + queuedN;
       } else it.cnt.style.display = 'none';

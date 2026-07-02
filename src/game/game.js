@@ -329,10 +329,14 @@ export class Game {
       // factory for units must exist
       if (cat !== 'build') {
         const facKey = UNITS[slot.key].factory;
-        if (!this.buildings.some(b => b.owner === PLAYER && b.key === facKey && b.hp > 0 && b.state === 'active')) continue;
+        if (!this.buildings.some(b => b.owner === PLAYER && b.key === facKey && b.hp > 0 && b.state === 'active')) {
+          this.eva('onHold');
+          continue;
+        }
       }
       const dtEff = DT * speedF;
-      const need = (slot.cost / slot.total) * dtEff;
+      // never charge past the sticker price (final tick would overshoot)
+      const need = Math.min((slot.cost / slot.total) * dtEff, slot.cost - slot.spent);
       if (this.credits[PLAYER] >= need) {
         this.credits[PLAYER] -= need;
         slot.spent += need;

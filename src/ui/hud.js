@@ -142,8 +142,10 @@ export class HUD {
         if (g.mode === 'sell' || g.mode === 'repair') {
           const t = g.pickAt(this.mouse.wx, this.mouse.wy);
           if (t && t.isBuilding && t.owner === PLAYER) {
-            if (g.mode === 'sell') t.startSell(g);
-            else { t.repairing = !t.repairing; this.audio.sfx('click'); }
+            if (g.mode === 'sell') {
+              if (t.state === 'active') t.startSell(g);
+              else this.audio.sfx('deny');
+            } else { t.repairing = !t.repairing; this.audio.sfx('click'); }
           }
           return;
         }
