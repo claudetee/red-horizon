@@ -1,14 +1,16 @@
 // RED HORIZON — sidebar: build tabs, cameo grid, credits ticker, power bar, radar box.
 
-import { BUILDINGS, UNITS, PLAYER } from '../game/data.js';
+import { BUILDINGS, UNITS, BUILD_TIME, PLAYER } from '../game/data.js';
 import { cameo } from '../engine/assets.js';
 import { fmtTime } from '../engine/core.js';
 
+// buildings are erected via the engineer's build menu on the command bar;
+// the sidebar is pure unit production (barracks / war factory / conyard)
 const TABS = {
-  build: ['power', 'refinery', 'barracks', 'factory', 'radar', 'turret'],
   inf: ['rifle', 'rocket'],
   veh: ['builder', 'buggy', 'harvester', 'tank', 'heavy'],
 };
+export const BUILD_MENU = ['power', 'refinery', 'barracks', 'factory', 'radar', 'turret', 'repair'];
 
 export class Sidebar {
   constructor(game, audio) {
@@ -38,8 +40,8 @@ export class Sidebar {
     game.onSidebarDirty = () => this.rebuild();
     this.dispCredits = game.credits[0];
     this.elCredits.textContent = Math.floor(this.dispCredits);
-    this.activeTab = 'build';
-    document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'build'));
+    this.activeTab = 'inf';
+    document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'inf'));
     this.rebuild();
   }
 
@@ -50,7 +52,7 @@ export class Sidebar {
   }
 
   cycleTab() {
-    const order = ['build', 'inf', 'veh'];
+    const order = ['inf', 'veh'];
     this.setTab(order[(order.indexOf(this.activeTab) + 1) % order.length]);
   }
 
@@ -100,32 +102,20 @@ export class Sidebar {
 
   clickItem(key) {
     const g = this.g;
-    const cat = g.catOf(key);
-    const slot = g.prod[cat];
-    if (cat === 'build' && slot && slot.ready && slot.key === key) {
-      g.enterPlacement(key);
-      this.audio.sfx('click');
-      return;
-    }
     if (!g.prereqsMet(key)) { this.audio.sfx('deny'); return; }
+    // routes to the least-busy matching factory (per-building queues)
     if (!g.startProduction(key)) this.audio.sfx('deny');
   }
 
   rightClickItem(key) {
     const g = this.g;
-    const cat = g.catOf(key);
-    const slot = g.prod[cat];
-    if (!slot) return;
-    // cancel the clicked item specifically: queued copy first, then the active build
-    if (slot.queue && slot.queue.includes(key)) {
-      slot.queue.splice(slot.queue.lastIndexOf(key), 1);
-      this.audio.sfx('click');
-      g.onSidebarDirty && g.onSidebarDirty();
-      return;
+    const facs = g.factoriesFor ? g.factoriesFor(key) : [];
+    // prefer cancelling a queued (non-active) copy, then an active head
+    for (const b of facs) {
+      if (b.queue.lastIndexOf(key) > 0) { b.cancelQueued(g, key); this.audio.sfx('click'); return; }
     }
-    if (slot.key === key) {
-      g.cancelActive(cat);
-      this.audio.sfx('click');
+    for (const b of facs) {
+      if (b.queue[0] === key) { b.cancelQueued(g, key); this.audio.sfx('click'); return; }
     }
   }
 
@@ -173,28 +163,30 @@ export class Sidebar {
     // radar
     this.elRadarOff.classList.toggle('hidden', g.hasRadar());
 
-    // items
+    // items — aggregate across all factories of this unit type
     for (const [key, it] of this.items) {
-      const cat = g.catOf(key);
-      const slot = g.prod[cat];
-      let met = g.prereqsMet(key);
-      if (cat === 'build' && !g.hasBuilder()) met = false;
+      const met = g.prereqsMet(key);
       it.el.classList.toggle('disabled', !met);
-      const active = slot && slot.key === key;
-      const queuedN = slot && slot.queue ? slot.queue.filter(k => k === key).length + (slot.key === key ? 1 : 0) : 0;
-      if (active && !slot.ready) {
-        const frac = Math.min(1, slot.t / slot.total);
+      const facs = g.factoriesFor(key);
+      let queuedN = 0, bestFrac = -1;
+      for (const b of facs) {
+        for (const k of b.queue) if (k === key) queuedN++;
+        if (b.queue[0] === key) {
+          const frac = Math.min(1, b.prodT / BUILD_TIME(UNITS[key].cost));
+          if (frac > bestFrac) bestFrac = frac;
+        }
+      }
+      if (bestFrac >= 0) {
         it.prog.style.display = '';
-        it.prog.style.background = `conic-gradient(transparent ${frac}turn, rgba(8,12,18,0.78) ${frac}turn)`;
+        it.prog.style.background = `conic-gradient(transparent ${bestFrac}turn, rgba(8,12,18,0.78) ${bestFrac}turn)`;
         it.el.classList.add('active-build');
       } else {
         it.prog.style.display = 'none';
         it.el.classList.remove('active-build');
       }
-      it.rdy.style.display = (active && slot.ready) ? '' : 'none';
-      it.el.classList.toggle('ready', !!(active && slot.ready));
-      const showCnt = cat !== 'build' && (active ? queuedN > 1 : queuedN >= 1);
-      if (showCnt) {
+      it.rdy.style.display = 'none';
+      it.el.classList.remove('ready');
+      if (queuedN > 0) {
         it.cnt.style.display = '';
         it.cnt.textContent = 'x' + queuedN;
       } else it.cnt.style.display = 'none';

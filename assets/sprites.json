@@ -273,5 +273,180 @@
    "fw": 3,
    "fh": 3
   }
+ },
+ "cameo_bld_conyard": {
+  "file": "assets/img/cameo_bld_conyard.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_bld_power": {
+  "file": "assets/img/cameo_bld_power.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_bld_refinery": {
+  "file": "assets/img/cameo_bld_refinery.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_bld_barracks": {
+  "file": "assets/img/cameo_bld_barracks.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_bld_factory": {
+  "file": "assets/img/cameo_bld_factory.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_bld_radar": {
+  "file": "assets/img/cameo_bld_radar.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_bld_turret": {
+  "file": "assets/img/cameo_bld_turret.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_unit_builder": {
+  "file": "assets/img/cameo_unit_builder.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_unit_rifle": {
+  "file": "assets/img/cameo_unit_rifle.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_unit_rocket": {
+  "file": "assets/img/cameo_unit_rocket.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_unit_buggy": {
+  "file": "assets/img/cameo_unit_buggy.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_unit_harvester": {
+  "file": "assets/img/cameo_unit_harvester.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_unit_tank_hull": {
+  "file": "assets/img/cameo_unit_tank_hull.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "cameo_unit_heavy_hull": {
+  "file": "assets/img/cameo_unit_heavy_hull.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "prop_grass": {
+  "file": "assets/img/prop_grass.png",
+  "w": 11,
+  "h": 20,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "prop_stones": {
+  "file": "assets/img/prop_stones.png",
+  "w": 15,
+  "h": 17,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "prop_wreck": {
+  "file": "assets/img/prop_wreck.png",
+  "w": 35,
+  "h": 35,
+  "pivot": [
+   0.5,
+   0.5
+  ]
+ },
+ "bld_repair": {
+  "file": "assets/img/bld_repair.png",
+  "w": 44,
+  "h": 42,
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "meta": {
+   "fw": 1,
+   "fh": 1
+  }
+ },
+ "cameo_bld_repair": {
+  "file": "assets/img/cameo_bld_repair.png",
+  "w": 100,
+  "h": 86,
+  "pivot": [
+   0.5,
+   0.5
+  ]
  }
 }

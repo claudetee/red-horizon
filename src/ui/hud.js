@@ -1,9 +1,10 @@
 // RED HORIZON — HUD: mouse orders, selection, minimap, cursors, banners, screens.
 
 import { TILE, clamp, dist2, fmtTime } from '../engine/core.js';
-import { PLAYER, ENEMY, TEAM_COLORS, BUILDINGS, UNITS, WEAPONS } from '../game/data.js';
+import { PLAYER, ENEMY, TEAM_COLORS, BUILDINGS, UNITS, WEAPONS, BUILD_TIME } from '../game/data.js';
 import { T_GRASS, T_DIRT, T_WATER, T_ROCK, T_TREE } from '../game/map.js';
 import { cameo } from '../engine/assets.js';
+import { BUILD_MENU } from './sidebar.js';
 
 function makeCursor(draw, hotX = 4, hotY = 4, size = 26) {
   const c = document.createElement('canvas');
@@ -43,6 +44,7 @@ export class HUD {
     };
     this.cbSig = '__init__';
     this.cbFrame = 0;
+    this.buildMenuOpen = false;
 
     this.enabled = true;
     this.cursors = this.buildCursors();
@@ -58,6 +60,8 @@ export class HUD {
     this.g = game;
     game.onBanner = (t, cls) => this.banner(t, cls);
     this.attackArmed = false;
+    this.buildMenuOpen = false;
+    this.cbSig = '__init__';
     this.mouse.down = false;
     this.mouse.dragging = false;
     this.lastClickTarget = null;
@@ -349,11 +353,34 @@ export class HUD {
         }
         case 'KeyX': this.setMode(g.mode === 'sell' ? 'normal' : 'sell'); break;
         case 'KeyC': this.setMode(g.mode === 'repair' ? 'normal' : 'repair'); break;
-        case 'KeyB': this.sidebar.setTab('build'); break;
+        case 'KeyB': {
+          // open the engineer build menu; auto-pick the nearest idle engineer if none selected
+          let crews = this.selectedUnits().filter(u => u.d.builder);
+          if (!crews.length) {
+            let best = null, bd = Infinity;
+            const c = { x: g.cam.x + this.viewport.clientWidth / g.cam.zoom / 2, y: g.cam.y + this.viewport.clientHeight / g.cam.zoom / 2 };
+            for (const u of g.units) {
+              if (u.owner !== PLAYER || !u.d.builder || u.hp <= 0) continue;
+              const d = dist2(u.x, u.y, c.x, c.y) * (u.state === 'idle' ? 1 : 3);
+              if (d < bd) { bd = d; best = u; }
+            }
+            if (best) { g.selection.clear(); g.selection.add(best); crews = [best]; }
+          }
+          if (crews.length) { this.buildMenuOpen = true; this.cbSig = ''; }
+          else g.eva('needBuilder');
+          break;
+        }
         case 'KeyV': this.autoHarvest(this.selectedUnits()); break;
+        case 'KeyF': {
+          let used = false;
+          for (const u of this.selectedUnits()) if (u.d.skill && u.useSkill(g)) used = true;
+          if (used) { this.cbSig = ''; this.audio.sfx('click'); }
+          break;
+        }
         case 'Tab': e.preventDefault(); this.sidebar.cycleTab(); break;
         case 'Escape':
-          if (g.mode !== 'normal') { this.setMode('normal'); g.placing = null; }
+          if (this.buildMenuOpen) { this.buildMenuOpen = false; this.cbSig = ''; }
+          else if (g.mode !== 'normal') { this.setMode('normal'); g.placing = null; }
           else if (this.attackArmed) this.attackArmed = false;
           else if (g.selection.size) g.selection.clear();
           else this.onEsc && this.onEsc();
@@ -389,11 +416,17 @@ export class HUD {
             }
             break;
           }
-          // production hotkeys (active tab)
+          // production hotkeys: build menu first, else active sidebar tab
           const map = { KeyQ: 0, KeyW: 1, KeyE: 2, KeyR: 3, KeyT: 4, KeyY: 5 };
           if (e.code in map && !e.ctrlKey) {
-            const tabs = { build: ['power', 'refinery', 'barracks', 'factory', 'radar', 'turret'], inf: ['rifle', 'rocket'], veh: ['buggy', 'harvester', 'tank', 'heavy'] };
-            const key = tabs[this.sidebar.activeTab][map[e.code]];
+            if (this.buildMenuOpen) {
+              const key = BUILD_MENU[map[e.code]];
+              if (key && g.prereqsMet(key) && g.startProduction(key)) { this.buildMenuOpen = false; this.cbSig = ''; }
+              else if (key) this.audio.sfx('deny');
+              break;
+            }
+            const tabs = { inf: ['rifle', 'rocket'], veh: ['builder', 'buggy', 'harvester', 'tank', 'heavy'] };
+            const key = (tabs[this.sidebar.activeTab] || [])[map[e.code]];
             if (key) this.sidebar.clickItem(key);
           }
           // debug keys
@@ -563,7 +596,8 @@ export class HUD {
     const g = this.g;
     for (const e of g.selection) if (e.hp <= 0 || e.dead) g.selection.delete(e);
     const sel = [...g.selection];
-    const sig = sel.map(e => e.id).sort((a, b) => a - b).join(',') + '|' + g.mode;
+    if (this.buildMenuOpen && !sel.some(e => !e.isBuilding && e.d.builder)) this.buildMenuOpen = false;
+    const sig = sel.map(e => e.id).sort((a, b) => a - b).join(',') + '|' + g.mode + '|' + (this.buildMenuOpen ? 'BM' : '') + '|' + (this.attackArmed ? 'AA' : '');
     this.cbFrame++;
     if (sig === this.cbSig && this.cbFrame % 18 !== 0) return;
     this.cbSig = sig;
@@ -601,6 +635,7 @@ export class HUD {
         if (w) rows.push(['射程', String(w.range)]);
         rows.push(['速度', String(e.d.speed)]);
         if ((e.kills || 0) > 0) rows.push(['击杀', String(e.kills), 'gold']);
+        if ((e.rank || 0) > 0) rows.push(['军衔', e.rank === 2 ? '精英 +40%' : '老兵 +20%', 'gold']);
         if (e.harv) rows.push(['载矿', `${Math.round(e.harv.load)}/700`, 'gold']);
       } else if (e.state === 'site') {
         rows.push(['施工', `${Math.round(e.progress * 100)}%`, 'gold']);
@@ -609,14 +644,40 @@ export class HUD {
         if (e.d.power) rows.push(['电力', (e.d.power > 0 ? '+' : '') + e.d.power, e.d.power > 0 ? '' : 'gold']);
         const low = g.power[PLAYER].out < g.power[PLAYER].use;
         rows.push(['状态', e.state === 'active' ? (low && e.d.power < 0 ? '低电' : '正常') : '施工', low && e.d.power < 0 ? 'red' : '']);
-        if (e.d.produces) {
-          const slot = g.prod[e.d.produces];
-          rows.push(['生产', slot ? `${UNITS[slot.key].cn.replace(/ /g, '')} ${Math.round(slot.t / slot.total * 100)}%` : '空闲']);
+        if (e.trainList && e.trainList().length && e.state === 'active') {
+          const head = e.queue[0];
+          rows.push(['生产', head ? `${UNITS[head].cn.replace(/ /g, '')} ${Math.round(e.prodT / BUILD_TIME(UNITS[head].cost) * 100)}%` : '空闲']);
+          rows.push(['队列', `${e.queue.length}/5`]);
           rows.push(['集结', '右键设定']);
         }
       }
       cb.stats.innerHTML = rows.map(([k, v, cls]) =>
         `<div class="st"><span class="sk">${k}</span><span class="sv ${cls || ''}">${v}</span></div>`).join('');
+      // production queue cards for a selected factory
+      if (first.isBuilding && first.owner === PLAYER && first.state === 'active' && first.queue.length) {
+        cb.multi.style.display = 'flex';
+        cb.multi.innerHTML = '';
+        first.queue.forEach((k, qi) => {
+          const card = document.createElement('div');
+          card.className = 'cb-card';
+          card.title = qi === 0 ? '生产中 — 点击取消' : '排队中 — 点击取消';
+          const cv = document.createElement('canvas');
+          cv.width = 40; cv.height = 30;
+          const cc = cv.getContext('2d');
+          cc.imageSmoothingEnabled = false;
+          cc.drawImage(cameo(UNITS[k].sprite), 0, 0, 40, 30);
+          card.appendChild(cv);
+          const hp = document.createElement('div');
+          hp.className = 'chp';
+          const i = document.createElement('i');
+          i.style.width = qi === 0 ? Math.round(first.prodT / BUILD_TIME(UNITS[k].cost) * 100) + '%' : '0%';
+          i.style.background = '#2ee6d6';
+          hp.appendChild(i);
+          card.appendChild(hp);
+          card.addEventListener('click', () => { first.cancelQueued(g, k); this.cbSig = ''; this.audio.sfx('click'); });
+          cb.multi.appendChild(card);
+        });
+      }
     } else {
       cb.count.textContent = 'x' + sel.length;
       cb.count.classList.remove('hidden');
@@ -664,6 +725,51 @@ export class HUD {
     const hasBuilder = units.some(u => u.d.builder);
     const hasHarv = units.some(u => u.harv);
     const single = sel.length === 1 ? sel[0] : null;
+
+    // engineer build menu takes over the command card (War3-style)
+    if (this.buildMenuOpen && hasBuilder) {
+      const cmds = this.cb.cmds;
+      cmds.innerHTML = '';
+      const hkeys = ['Q', 'W', 'E', 'R', 'T', 'Y'];
+      BUILD_MENU.forEach((key, i) => {
+        const d = BUILDINGS[key];
+        const met = g.prereqsMet(key);
+        const el = document.createElement('button');
+        el.className = 'cbtn bld' + (met ? '' : ' off');
+        el.title = `${d.cn.replace(/ /g, '')} $${d.cost} — ${d.desc}`;
+        const cv = document.createElement('canvas');
+        cv.width = 52; cv.height = 32;
+        const cc = cv.getContext('2d');
+        cc.imageSmoothingEnabled = false;
+        const cm = cameo(d.sprite);
+        // proportional center-crop into the button
+        const sc = Math.max(52 / cm.width, 32 / cm.height);
+        const dw = cm.width * sc, dh = cm.height * sc;
+        cc.drawImage(cm, (52 - dw) / 2, (32 - dh) / 2, dw, dh);
+        el.appendChild(cv);
+        const price = document.createElement('span');
+        price.className = 'bprice';
+        price.textContent = '$' + d.cost;
+        el.appendChild(price);
+        const hk = document.createElement('span');
+        hk.className = 'hk';
+        hk.textContent = hkeys[i];
+        el.appendChild(hk);
+        el.addEventListener('click', () => {
+          this.audio.ensure();
+          if (!met) { this.audio.sfx('deny'); return; }
+          if (g.startProduction(key)) { this.buildMenuOpen = false; this.cbSig = ''; }
+        });
+        cmds.appendChild(el);
+      });
+      const back = document.createElement('button');
+      back.className = 'cbtn';
+      back.innerHTML = `↩<span class="hk">Esc</span>`;
+      back.addEventListener('click', () => { this.buildMenuOpen = false; this.cbSig = ''; this.audio.sfx('click'); });
+      cmds.appendChild(back);
+      return;
+    }
+
     const btns = [];
     if (hasCombat) {
       btns.push({ t: '攻', hk: 'A', cls: this.attackArmed ? 'on' : '', fn: () => { this.attackArmed = true; this.cbSig = ''; } });
@@ -673,13 +779,48 @@ export class HUD {
       btns.push({ t: '停', hk: 'S', fn: () => g.cmdStop(units) });
     }
     if (hasBuilder) {
-      btns.push({ t: '建', hk: 'B', fn: () => { this.sidebar.setTab('build'); this.banner('选择要建造的建筑', 'good'); } });
+      btns.push({ t: '建', hk: 'B', fn: () => { this.buildMenuOpen = true; this.cbSig = ''; } });
       if (!hasCombat) btns.push({ t: '停', hk: 'S', fn: () => g.cmdStop(units) });
     }
     if (hasHarv) {
       btns.push({ t: '矿', hk: 'V', fn: () => this.autoHarvest(units) });
     }
+    // unit skills (sprint / deploy)
+    const skillKeys = new Set();
+    for (const u of units) {
+      if (!u.d.skill || skillKeys.has(u.d.skill.key)) continue;
+      skillKeys.add(u.d.skill.key);
+      const sk = u.d.skill;
+      const holders = units.filter(x => x.d.skill && x.d.skill.key === sk.key);
+      const maxCd = Math.max(...holders.map(x => x.skillCd || 0));
+      const anyDeployed = holders.some(x => x.deployed);
+      btns.push({
+        t: sk.cn.replace(/ /g, '')[0], hk: sk.hk,
+        cls: (sk.toggle && anyDeployed ? 'on ' : '') + (maxCd > 0.2 && !sk.toggle ? 'cd' : ''),
+        cd: !sk.toggle && maxCd > 0.2 ? Math.ceil(maxCd) : 0,
+        title: `${sk.cn.replace(/ /g, '')} — ${sk.desc}`,
+        fn: () => { for (const x of holders) x.useSkill(g); this.cbSig = ''; },
+      });
+    }
+
     if (single && single.isBuilding && single.owner === PLAYER) {
+      // factory: production buttons live on the command card (per-building queue)
+      if (single.state === 'active' && single.trainList().length) {
+        for (const k of single.trainList()) {
+          const ud = UNITS[k];
+          const met = g.prereqsMet(k);
+          btns.push({
+            cameo: ud.sprite, price: ud.cost, hk: ud.hotkey || '',
+            cls: 'bld' + (met ? '' : ' off'),
+            title: `${ud.cn.replace(/ /g, '')} $${ud.cost} — ${ud.desc}`,
+            fn: () => {
+              if (!met) { this.audio.sfx('deny'); return; }
+              if (!single.enqueue(g, k)) this.audio.sfx('deny');
+              this.cbSig = '';
+            },
+          });
+        }
+      }
       if (single.state === 'site') {
         btns.push({ t: '撤', hk: 'X', cls: 'danger', fn: () => { single.startSell(g); this.cbSig = ''; } });
       } else if (single.state === 'active') {
@@ -691,7 +832,27 @@ export class HUD {
     for (const b of btns.slice(0, 8)) {
       const el = document.createElement('button');
       el.className = 'cbtn ' + (b.cls || '');
-      el.innerHTML = `${b.t}<span class="hk">${b.hk}</span>`;
+      if (b.title) el.title = b.title;
+      if (b.cameo) {
+        const cv = document.createElement('canvas');
+        cv.width = 52; cv.height = 32;
+        const cc = cv.getContext('2d');
+        cc.imageSmoothingEnabled = false;
+        const cm = cameo(b.cameo);
+        const sc = Math.max(52 / cm.width, 32 / cm.height);
+        cc.drawImage(cm, (52 - cm.width * sc) / 2, (32 - cm.height * sc) / 2, cm.width * sc, cm.height * sc);
+        el.appendChild(cv);
+        const price = document.createElement('span');
+        price.className = 'bprice';
+        price.textContent = '$' + b.price;
+        el.appendChild(price);
+        const hk = document.createElement('span');
+        hk.className = 'hk';
+        hk.textContent = b.hk;
+        el.appendChild(hk);
+      } else {
+        el.innerHTML = `${b.t}${b.cd ? `<span class="cdnum">${b.cd}</span>` : ''}<span class="hk">${b.hk}</span>`;
+      }
       el.addEventListener('click', () => { this.audio.ensure(); b.fn(); this.audio.sfx('click'); });
       cb.cmds.appendChild(el);
     }

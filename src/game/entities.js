@@ -47,6 +47,27 @@ export class Unit {
     this.isBuilding = false;
     this.pendingPath = false;
     this.wanderT = 0;
+    this.kills = 0;
+    this.rank = 0;
+    this.skillCd = 0;
+    this.skillT = 0;       // active skill remaining (sprint)
+    this.deployed = false; // rocketeer siege stance
+  }
+
+  useSkill(g) {
+    const sk = this.d.skill;
+    if (!sk) return false;
+    if (sk.toggle) {
+      this.deployed = !this.deployed;
+      if (this.deployed) { this.path = null; this.state = this.target ? 'attack' : 'idle'; }
+      g.combat.puff(this.x, this.y, 'dust', 4, 0.5);
+      return true;
+    }
+    if (this.skillCd > 0) return false;
+    this.skillCd = sk.cd;
+    this.skillT = sk.dur;
+    g.audio.sfx('rocket', { x: this.x, y: this.y, vol: 0.4 });
+    return true;
   }
 
   armorClass() { return this.d.armor; }
@@ -56,6 +77,7 @@ export class Unit {
   orderMove(g, x, y, silent) {
     this.state = 'move'; this.target = null; this.amPos = null; this.guardMode = false;
     this.resumeAM = null; this.attackAnchor = null;
+    this.deployed = false;   // moving breaks siege stance
     this.requestPathTo(g, x, y);
     if (!silent && this.owner === PLAYER) g.audio.ack();
   }
@@ -135,6 +157,17 @@ export class Unit {
       g.combat.puff(this.x, this.y, 'smoke', 4, 1.0);
     }
 
+    // skills
+    if (this.skillCd > 0) this.skillCd -= DT;
+    if (this.skillT > 0) {
+      this.skillT -= DT;
+      if ((g.tick & 1) === 0) g.combat.puff(this.x - Math.cos(this.heading) * this.d.r, this.y - Math.sin(this.heading) * this.d.r, 'fire', 2.4, 0.28);
+    }
+    // mammoth passive self-repair
+    if (this.d.selfRepair && this.hp > 0 && this.hp < this.maxHp * this.d.selfRepair.below) {
+      this.hp = Math.min(this.maxHp * this.d.selfRepair.below, this.hp + this.d.selfRepair.rate * DT);
+    }
+
     switch (this.state) {
       case 'move':
         if (this.moveAlong(g)) this.state = 'idle';
@@ -183,9 +216,10 @@ export class Unit {
       return;
     }
     const rr = t.isBuilding ? Math.max(t.fw, t.fh) * TILE * 0.42 : 0;
-    const rangePx = this.w.range * TILE + rr;
+    const rangePx = (this.w.range + (this.deployed ? this.d.skill.rangeBonus : 0)) * TILE + rr;
     const d = dist(this.x, this.y, t.x, t.y);
     if (d > rangePx) {
+      if (this.deployed) { this.target = null; return; }  // siege stance holds ground
       if (this.guardMode) {
         // guards don't chase — and drop unreachable locks so they stay responsive
         this.target = null;
@@ -281,11 +315,16 @@ export class Unit {
     const align = Math.cos(angDiff(this.heading, want));
     const f = this.d.kind === 'inf' ? 1 : Math.max(0.22, align);
     if (align > -0.2) {
-      const step = this.d.speed * this.speedJit * f * DT;
+      const boost = this.skillT > 0 && this.d.skill && this.d.skill.speedMul ? this.d.skill.speedMul : 1;
+      const step = this.d.speed * this.speedJit * f * boost * DT;
       const nx = this.x + Math.cos(this.heading) * step;
       const ny = this.y + Math.sin(this.heading) * step;
       const moved = this.tryMove(g, nx, ny);
-      if (moved && this.d.kind !== 'inf' && (g.tick & 7) === 0 && g.rng() < 0.3) g.combat.dust(this.x - Math.cos(this.heading) * this.d.r, this.y - Math.sin(this.heading) * this.d.r);
+      if (moved && this.d.kind !== 'inf') {
+        if ((g.tick & 7) === 0 && g.rng() < 0.3) g.combat.dust(this.x - Math.cos(this.heading) * this.d.r, this.y - Math.sin(this.heading) * this.d.r);
+        // tread marks
+        if (((g.tick + this.id) % 5) === 0) g.addTrack(this.x - Math.cos(this.heading) * this.d.r * 0.5, this.y - Math.sin(this.heading) * this.d.r * 0.5, this.heading, this.d.r);
+      }
       return moved;
     }
     return true; // still rotating toward heading — counts as progress
@@ -550,6 +589,29 @@ export class Unit {
       ctx.fillStyle = col.main;
       ctx.fillRect(px - 1.5, py + (this.selRadius + 3) * z, 3, 3);
     }
+    // deployed stance marker
+    if (this.deployed) {
+      ctx.strokeStyle = 'rgba(255,215,94,0.75)';
+      ctx.lineWidth = 1.2;
+      const r = (this.selRadius + 2) * z;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // veterancy chevrons
+    if (this.rank > 0) {
+      ctx.strokeStyle = '#ffd75e';
+      ctx.lineWidth = 1.6;
+      const bx = px + (this.selRadius - 1) * z, by = py - (this.selRadius + 1) * z;
+      for (let i = 0; i < this.rank; i++) {
+        const yy = by + i * 5;
+        ctx.beginPath();
+        ctx.moveTo(bx - 3, yy);
+        ctx.lineTo(bx, yy + 3);
+        ctx.lineTo(bx + 3, yy);
+        ctx.stroke();
+      }
+    }
   }
 }
 
@@ -584,6 +646,63 @@ export class Building {
     this.isBuilding = true;
     this.known = [false, false]; // seen by player? (fog memory)
     this.sellT = -1;
+    // per-building production queue (this IS the factory model)
+    this.queue = [];
+    this.prodT = 0;
+    this.prodSpent = 0;
+  }
+
+  canTrain(key) { return UNITS[key] && UNITS[key].factory === this.key; }
+  trainList() { return Object.keys(UNITS).filter(k => UNITS[k].factory === this.key); }
+
+  enqueue(g, key) {
+    if (this.state !== 'active' || !this.canTrain(key) || this.queue.length >= 5) return false;
+    this.queue.push(key);
+    if (this.owner === PLAYER) g.onSidebarDirty && g.onSidebarDirty();
+    return true;
+  }
+
+  // cancel the LAST queued copy of `key` (or the active head, refunding progress)
+  cancelQueued(g, key) {
+    for (let i = this.queue.length - 1; i >= 1; i--) {
+      if (this.queue[i] === key) { this.queue.splice(i, 1); if (this.owner === PLAYER) g.onSidebarDirty && g.onSidebarDirty(); return true; }
+    }
+    if (this.queue[0] === key) {
+      g.addCredits(this.owner, this.prodSpent);
+      this.queue.shift();
+      this.prodT = 0; this.prodSpent = 0;
+      if (this.owner === PLAYER) { g.eva('cancelled'); g.onSidebarDirty && g.onSidebarDirty(); }
+      return true;
+    }
+    return false;
+  }
+
+  updateProduction(g) {
+    if (!this.queue.length) return;
+    const key = this.queue[0];
+    const ud = UNITS[key];
+    const total = BUILD_TIME(ud.cost);
+    const lowPow = g.power[this.owner].out < g.power[this.owner].use;
+    let speedF = (lowPow ? ECON.lowPowerBuildFactor : 1);
+    if (this.owner === PLAYER && g.fastBuild) speedF *= 8;
+    if (this.owner !== PLAYER && g.ai) speedF *= g.ai.diff.income;
+    const dtEff = DT * speedF;
+    const need = Math.min((ud.cost / total) * dtEff, Math.max(0, ud.cost - this.prodSpent));
+    if (g.credits[this.owner] >= need) {
+      g.credits[this.owner] -= need;
+      this.prodSpent += need;
+      this.prodT += dtEff;
+    } else if (this.owner === PLAYER && (g.tick % 60) === 0) g.eva('insufficientFunds');
+    if (this.prodT >= total) {
+      g.spawnUnitFromFactory(this, key);
+      this.queue.shift();
+      this.prodT = 0; this.prodSpent = 0;
+      if (this.owner === PLAYER) {
+        g.eva('unitReady');
+        g.audio.sfx('ready');
+        g.onSidebarDirty && g.onSidebarDirty();
+      }
+    }
   }
 
   armorClass() { return 'building'; }
@@ -647,6 +766,30 @@ export class Building {
       }
       if (this.hp >= this.maxHp) this.repairing = false;
     }
+    // per-building unit production
+    if (this.state === 'active') this.updateProduction(g);
+
+    // repair platform aura: patch up nearby friendly vehicles for credits
+    if (this.d.repairAura && this.state === 'active' && (g.tick % 5) === 0) {
+      const aura = this.d.repairAura;
+      const lowPow = g.power[this.owner].out < g.power[this.owner].use;
+      if (!lowPow) {
+        let fixed = 0;
+        g.eachEntityNear(this.x, this.y, aura.range, e => {
+          if (fixed >= 3 || e.isBuilding || e.owner !== this.owner || e.hp <= 0 || e.hp >= e.maxHp) return;
+          if (e.d.kind !== 'veh') return;
+          if (dist(this.x, this.y, e.x, e.y) > aura.range) return;
+          const amt = aura.rate * DT * 5;
+          const cost = (e.d.cost * ECON.repairCostFactor / e.maxHp) * amt;
+          if (g.credits[this.owner] < cost) return;
+          g.credits[this.owner] -= cost;
+          e.hp = Math.min(e.maxHp, e.hp + amt);
+          fixed++;
+          if (g.rng() < 0.4) g.combat.spark(e.x + (g.rng() - .5) * 14, e.y + (g.rng() - .5) * 12, 1);
+        });
+      }
+    }
+
     // damage smoke / fire
     const frac = this.hp / this.maxHp;
     if (frac < 0.55) {

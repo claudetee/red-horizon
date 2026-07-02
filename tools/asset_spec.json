@@ -8,7 +8,8 @@
     "unit": "Retro 1990s real-time strategy PC game sprite, in the style of classic Command & Conquer and Red Alert era games. 16-bit pixel-art aesthetic with crisp chunky pixels and a clean readable silhouette. Viewed from directly overhead, top-down. Single hard sunlight from the top-left. Muted cold military palette: gunmetal grey-blue armor plating, olive-drab details, weathered battle-worn metal with rivets and panel lines, and bright TEAL (#2EE6D6) accent panels and markings. Subject perfectly centered, filling about 70% of the frame. No text, no watermark, no UI, no frame. The background must be fully transparent empty alpha with absolutely nothing painted around the subject: NO drop shadow, NO cast shadow, NO dark silhouette copy behind or under the subject, NO ground plate — the sprite gets rotated in-engine, so shading on the subject body only.",
     "building": "Retro 1990s real-time strategy PC game sprite, in the style of classic Command & Conquer and Red Alert era games. 16-bit pixel-art aesthetic with crisp chunky pixels and a clean readable silhouette. Viewed from directly overhead, top-down at a slight 3/4 angle. Single hard sunlight from the top-left. Muted cold military palette: gunmetal grey-blue armor plating, olive-drab details, weathered battle-worn metal with rivets and panel lines, and bright TEAL (#2EE6D6) accent panels and markings. Subject perfectly centered, filling about 78% of the frame. Plain background. No text, no watermark, no UI, no frame. The structure sits on a weathered square concrete foundation pad whose edges are aligned with the image axes (not rotated), with a subtle short drop shadow toward the bottom-right baked in.",
     "prop": "Retro 1990s real-time strategy PC game environment sprite, 16-bit pixel-art aesthetic, crisp chunky pixels. Viewed from directly overhead, top-down. Single hard sunlight from the top-left. Muted natural palette that fits a dry steppe battlefield. Subject centered, filling about 72% of the frame. Plain background. No text, no watermark. Strictly NO ground shadow.",
-    "terrain": "Seamless tileable terrain texture for a retro 1990s real-time strategy PC game, viewed from directly overhead (true top-down orthographic). 16-bit pixel-art aesthetic. Muted, low-contrast, evenly lit with no vignette and no bright hotspots, so game units stay readable on top of it. The texture must tile perfectly: the left and right edges match each other exactly, and the top and bottom edges match each other exactly. No text, no watermark."
+    "terrain": "Seamless tileable terrain texture for a retro 1990s real-time strategy PC game, viewed from directly overhead (true top-down orthographic). 16-bit pixel-art aesthetic. Muted, low-contrast, evenly lit with no vignette and no bright hotspots, so game units stay readable on top of it. The texture must tile perfectly: the left and right edges match each other exactly, and the top and bottom edges match each other exactly. No text, no watermark.",
+    "cameo": "Unit portrait icon for a 2003-era RTS game sidebar, in the exact style of Red Alert 2 cameo icons: a dramatic close-up 3/4 view of the subject filling most of the frame, dark navy-steel gradient background with subtle diagonal tech panel lines, strong warm rim lighting from the top-left, painted military concept-art style with crisp confident brushwork, high contrast and readable at small size. No text, no watermark, no border, no frame."
   },
   "assets": {
     "unit_rifle": {
@@ -305,6 +306,211 @@
       "meta": {
         "fw": 3,
         "fh": 3
+      }
+    },
+    "cameo_bld_conyard": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A massive construction yard command facility with a yellow gantry crane, seen from a low dramatic angle.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_power": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A fortified power plant with twin cooling stacks and glowing TEAL energy coils.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_refinery": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "An industrial ore refinery with a golden-glowing storage silo and smelter vents.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_barracks": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A reinforced military barracks bunker with sandbags and a teal flag.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_factory": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A heavy war factory with a huge hazard-striped vehicle bay door, welding glow inside.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_radar": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A military radar station with a white geodesic dome and dish antenna, teal status lights.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_bld_turret": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "An armored anti-tank gun turret with a heavy cannon, mounted on a concrete pad.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_builder": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A compact tracked engineering vehicle with a crane arm and yellow-black hazard stripes, amber beacon.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_rifle": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A gritty infantry rifleman in gunmetal-blue fatigues and helmet holding an assault rifle, determined face partly in shadow.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_rocket": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A rocket trooper with a shoulder-mounted launcher tube and dark visor helmet, red trim on armored vest.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_buggy": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A fast military scout attack buggy with a roll cage and pintle machine gun kicking up dust.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_harvester": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A massive ore harvester truck with a toothed intake scoop and a hopper full of glowing golden ore.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_tank_hull": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A medium battle tank with angular sloped armor and a long cannon with muzzle brake, teal squad markings.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "cameo_unit_heavy_hull": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A colossal super-heavy tank with FOUR tracks and TWIN parallel cannons, imposing low angle.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
+      }
+    },
+    "prop_grass": {
+      "style": "prop",
+      "background": "transparent",
+      "prompt": "A small tuft of dry steppe grass with a few taller seed stalks, seen from directly above. The sprite must be isolated on a fully transparent background: absolutely NO ground patch, NO soil square, NO terrain painted under or around the subject.",
+      "process": {
+        "type": "prop",
+        "size": 20
+      }
+    },
+    "prop_stones": {
+      "style": "prop",
+      "background": "transparent",
+      "prompt": "A loose scatter of small grey pebbles and stones, seen from directly above. The sprite must be isolated on a fully transparent background: absolutely NO ground patch, NO soil square, NO terrain painted under or around the subject.",
+      "process": {
+        "type": "prop",
+        "size": 22
+      }
+    },
+    "prop_wreck": {
+      "style": "prop",
+      "background": "transparent",
+      "prompt": "A small rusted destroyed vehicle wreck, burnt-out and partially buried in dirt, seen from directly above. The sprite must be isolated on a fully transparent background: absolutely NO ground patch, NO soil square, NO terrain painted under or around the subject.",
+      "process": {
+        "type": "prop",
+        "size": 34
+      }
+    },
+    "bld_repair": {
+      "style": "building",
+      "background": "transparent",
+      "prompt": "A Repair Platform for a retro RTS: a small square maintenance pad with a folding crane arm, hydraulic lift rails, tool racks, yellow-black hazard striping and a teal diagnostic screen, open flat center where a vehicle parks.",
+      "process": {
+        "type": "building",
+        "size": 44
+      },
+      "meta": {
+        "fw": 1,
+        "fh": 1
+      }
+    },
+    "cameo_bld_repair": {
+      "style": "cameo",
+      "background": "opaque",
+      "prompt": "A military vehicle repair platform with a crane arm and hydraulic lifts, sparks flying from a welding torch.",
+      "process": {
+        "type": "cameo",
+        "w": 100,
+        "h": 86,
+        "quantize": 128
       }
     }
   }

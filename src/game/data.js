@@ -26,8 +26,8 @@ export const WEAPONS = {
 export const BUILDINGS = {
   conyard: {
     cn: '建 造 厂', en: 'CONSTRUCTION YARD', cost: 2500, hp: 1500, power: 0,
-    fw: 3, fh: 3, sight: 6, sprite: 'bld_conyard', buildable: false,
-    desc: '基地核心。失去所有建筑即战败。',
+    fw: 3, fh: 3, sight: 6, sprite: 'bld_conyard', buildable: false, produces: 'veh',
+    desc: '基地核心，生产工程车。失去所有建筑即战败。',
   },
   power: {
     cn: '发 电 厂', en: 'POWER PLANT', cost: 300, hp: 400, power: +100,
@@ -64,6 +64,12 @@ export const BUILDINGS = {
     buildable: true, hotkey: 'Y', prereq: ['barracks'], weapon: 'turretGun',
     desc: '自动炮塔，克制载具。断电时射速减半。',
   },
+  repair: {
+    cn: '维 修 平 台', en: 'REPAIR PLATFORM', cost: 600, hp: 400, power: -15,
+    fw: 1, fh: 1, sight: 3, sprite: 'bld_repair', buildable: true, hotkey: 'U',
+    prereq: ['factory'], repairAura: { range: 105, rate: 9 },
+    desc: '自动修理附近的友方载具（消耗资金）。',
+  },
 };
 
 export const UNITS = {
@@ -83,13 +89,15 @@ export const UNITS = {
     cn: '火 箭 兵', en: 'ROCKETEER', cost: 300, hp: 55, speed: 40, turn: 12,
     sight: 5, armor: 'inf', weapon: 'rocket', r: 5, sprite: 'unit_rocket',
     factory: 'barracks', hotkey: 'W', kind: 'inf',
-    desc: '反装甲步兵，克制载具与建筑。',
+    skill: { key: 'deploy', cn: '部 署', hk: 'F', toggle: true, rangeBonus: 1.3, desc: '架设发射位：射程 +1.3，无法移动' },
+    desc: '反装甲步兵，克制载具与建筑。技能：部署 (F)。',
   },
   buggy: {
     cn: '侦 察 车', en: 'SCOUT BUGGY', cost: 600, hp: 230, speed: 128, turn: 4.6,
     sight: 6.5, armor: 'light', weapon: 'buggyMG', r: 10, sprite: 'unit_buggy',
     factory: 'factory', hotkey: 'W', kind: 'veh',
-    desc: '高速侦察载具，机枪克制步兵。',
+    skill: { key: 'sprint', cn: '冲 刺', hk: 'F', cd: 9, dur: 2.2, speedMul: 1.85, desc: '短暂爆发 +85% 移速' },
+    desc: '高速侦察载具，机枪克制步兵。技能：冲刺 (F)。',
   },
   harvester: {
     cn: '采 矿 车', en: 'ORE HARVESTER', cost: 1200, hp: 650, speed: 62, turn: 3.2,
@@ -109,7 +117,8 @@ export const UNITS = {
     sight: 6, armor: 'heavy', weapon: 'twinCannon', r: 14, sprite: 'unit_heavy_hull',
     turretSprite: 'unit_heavy_gun', turretTurn: 3.2,
     factory: 'factory', hotkey: 'T', kind: 'veh', prereqBld: ['radar'],
-    desc: '双管重型坦克，需要雷达站解锁。',
+    selfRepair: { below: 0.5, rate: 6 },
+    desc: '双管重型坦克，需雷达站解锁。被动：低于半血时战场自修。',
   },
 };
 

@@ -35,7 +35,9 @@ export class Game {
     this.hash = new SpatialHash(this.map.w, this.map.h);
     this.husks = [];
     this.decals = [];
+    this.tracks = [];
     this.delayed = [];
+    this.introT = 1.4;
 
     this.credits = [ECON.startCredits, this.diff.aiCredits];
     this.dispCredits = ECON.startCredits;
@@ -47,14 +49,13 @@ export class Game {
 
     this.selection = new Set();
     this.groups = {};             // digit -> array of ids
-    this.prod = { build: null, inf: null, veh: null };
     this.placing = null;          // building key awaiting placement
     this.mode = 'normal';         // normal | placing | repair | sell | attackTarget
     this.markers = [];            // move/attack ground markers
     this.pings = [];              // minimap pings {cx, cy, t}
     this.lastEvent = null;        // {x, y}
 
-    this.cam = { x: 0, y: 0, zoom: 1 };
+    this.cam = { x: 0, y: 0, zoom: 1.25 };
     this.shake = 0;
     this.tick = 0;
     this.time = 0;
@@ -74,7 +75,7 @@ export class Game {
     this.setupStart();
     this.ai = new AIController(this, this.diff);
     // opening guidance
-    this.delayed.push({ at: 45, fn: () => { this.onBanner && this.onBanner('指挥官，点击建筑面板开始施工 (B)——工程车会自动前往', 'good'); } });
+    this.delayed.push({ at: 45, fn: () => { this.onBanner && this.onBanner('指挥官，选中工程车按 B 打开建造菜单', 'good'); } });
     this.delayed.push({ at: 240, fn: () => { this.onBanner && this.onBanner('多台工程车同修一处可以加速施工', 'gold'); } });
     this.delayed.push({ at: 420, fn: () => { this.onBanner && this.onBanner('矿石精炼厂附赠采矿车，经济就是火力', 'gold'); } });
   }
@@ -121,11 +122,23 @@ export class Game {
     } else {
       u.orderMove(this, rp.x + (this.rng() - .5) * 40, rp.y + (this.rng() - .5) * 40, true);
     }
-    if (b.owner === PLAYER) {
-      this.eva('unitReady');
-      this.audio.sfx('ready');
-    }
     return u;
+  }
+
+  // factories of this unit type, best (shortest queue) first
+  factoriesFor(key, owner = PLAYER) {
+    const fac = UNITS[key].factory;
+    return this.buildings
+      .filter(b => b.owner === owner && b.key === fac && b.hp > 0 && b.state === 'active')
+      .sort((a, b) => (a.queue.length - b.queue.length) || (a.id - b.id));
+  }
+
+  // route a unit order to the least-busy matching factory
+  enqueueUnit(key, owner = PLAYER) {
+    if (!this.prereqsMet(key)) return null;
+    const list = this.factoriesFor(key, owner);
+    for (const b of list) if (b.enqueue(this, key)) return b;
+    return null;
   }
 
   canPlace(key, cx, cy, owner = PLAYER) {
@@ -177,6 +190,15 @@ export class Game {
     if (attacker && attacker.owner !== e.owner) {
       this.stats[attacker.owner].kills++;
       attacker.kills = (attacker.kills || 0) + 1;
+      // veterancy: 3 kills = veteran (+20% dmg), 6 = elite (+40%)
+      const newRank = attacker.kills >= 6 ? 2 : attacker.kills >= 3 ? 1 : 0;
+      if (newRank > (attacker.rank || 0)) {
+        attacker.rank = newRank;
+        if (attacker.owner === PLAYER && !attacker.isBuilding) {
+          this.onBanner && this.onBanner(`${attacker.d.cn.replace(/ /g, '')} 晋升${newRank === 2 ? '精英' : '老兵'}`, 'gold');
+          this.audio.sfx('ready');
+        }
+      }
     }
     this.stats[e.owner].lost++;
     this.selection.delete(e);
@@ -224,6 +246,11 @@ export class Game {
   pingAt(x, y) {
     this.pings.push({ x, y, t: 2.2 });
     if (this.pings.length > 8) this.pings.shift();
+  }
+
+  addTrack(x, y, ang, r) {
+    this.tracks.push({ x, y, ang, r, ttl: 7, max: 7 });
+    if (this.tracks.length > 260) this.tracks.shift();
   }
 
   // ---------- economy / power ----------
@@ -275,79 +302,18 @@ export class Game {
   }
 
   startProduction(key) {
-    const cat = this.catOf(key);
-    const cost = (BUILDINGS[key] || UNITS[key]).cost;
     if (!this.prereqsMet(key)) return false;
-    if (cat === 'build') {
+    if (this.catOf(key) === 'build') {
       // buildings are erected by engineer trucks on-site
       if (!this.hasBuilder(PLAYER)) { this.eva('needBuilder'); return false; }
       this.enterPlacement(key);
       this.audio.sfx('click');
       return true;
     }
-    const slot = this.prod[cat];
-    if (slot) {
-      if (slot.queue.length < 8) { slot.queue.push(key); this.audio.sfx('click'); this.onSidebarDirty && this.onSidebarDirty(); return true; }
-      return false;
-    }
-    this.prod[cat] = { key, t: 0, total: BUILD_TIME(cost), spent: 0, cost, queue: [], paused: false };
-    this.audio.sfx('click');
-    this.onSidebarDirty && this.onSidebarDirty();
-    return true;
-  }
-
-  // cancel the actively-building item (refund progress), promoting the next queued one
-  cancelActive(cat) {
-    const slot = this.prod[cat];
-    if (!slot) return;
-    this.addCredits(PLAYER, slot.spent);
-    const next = slot.queue && slot.queue.shift();
-    this.prod[cat] = next
-      ? { key: next, t: 0, total: BUILD_TIME(UNITS[next].cost), spent: 0, cost: UNITS[next].cost, queue: slot.queue, paused: false }
-      : null;
-    if (this.placing && cat === 'build') { this.placing = null; this.mode = 'normal'; }
-    this.eva('cancelled');
-    this.onSidebarDirty && this.onSidebarDirty();
-  }
-
-  cancelProduction(cat) {
-    const slot = this.prod[cat];
-    if (!slot) return;
-    if (slot.queue && slot.queue.length) { slot.queue.pop(); this.onSidebarDirty && this.onSidebarDirty(); return; }
-    this.addCredits(PLAYER, slot.spent);
-    this.prod[cat] = null;
-    if (this.placing && cat === 'build') { this.placing = null; this.mode = 'normal'; }
-    this.eva('cancelled');
-    this.onSidebarDirty && this.onSidebarDirty();
-  }
-
-  updateProduction() {
-    const lowPow = this.power[PLAYER].out < this.power[PLAYER].use;
-    const speedF = (lowPow ? ECON.lowPowerBuildFactor : 1) * (this.fastBuild ? 8 : 1);
-    for (const cat of ['inf', 'veh']) {
-      const slot = this.prod[cat];
-      if (!slot) continue;
-      const facKey = UNITS[slot.key].factory;
-      if (!this.buildings.some(b => b.owner === PLAYER && b.key === facKey && b.hp > 0 && b.state === 'active')) {
-        this.eva('onHold');
-        continue;
-      }
-      const dtEff = DT * speedF;
-      // never charge past the sticker price (final tick would overshoot)
-      const need = Math.min((slot.cost / slot.total) * dtEff, slot.cost - slot.spent);
-      if (this.credits[PLAYER] >= need) {
-        this.credits[PLAYER] -= need;
-        slot.spent += need;
-        slot.t += dtEff;
-      } else if ((this.tick % 60) === 0) this.eva('insufficientFunds');
-      if (slot.t >= slot.total) {
-        const fac = this.buildings.find(b => b.owner === PLAYER && b.key === facKey && b.hp > 0 && b.state === 'active');
-        if (fac) this.spawnUnitFromFactory(fac, slot.key);
-        const next = slot.queue.shift();
-        this.prod[cat] = next ? { key: next, t: 0, total: BUILD_TIME(UNITS[next].cost), spent: 0, cost: UNITS[next].cost, queue: slot.queue, paused: false } : null;
-        this.onSidebarDirty && this.onSidebarDirty();
-      }
-    }
+    // units: route to the least-busy matching factory (per-building queues)
+    const b = this.enqueueUnit(key, PLAYER);
+    if (b) { this.audio.sfx('click'); return true; }
+    return false;
   }
 
   enterPlacement(key) {
@@ -529,7 +495,6 @@ export class Game {
     for (const b of this.buildings) b.update(this);
 
     this.combat.update();
-    this.updateProduction();
     this.ai.update();
 
     if ((this.tick % 6) === 0) this.fog.update(this);
@@ -570,6 +535,11 @@ export class Game {
       this.decals[i].ttl -= DT;
       if (this.decals[i].ttl <= 0) this.decals.splice(i, 1);
     }
+    for (let i = this.tracks.length - 1; i >= 0; i--) {
+      this.tracks[i].ttl -= DT;
+      if (this.tracks[i].ttl <= 0) this.tracks.splice(i, 1);
+    }
+    if (this.introT > 0) this.introT -= DT;
     if (this.shake > 0) this.shake = Math.max(0, this.shake - 26 * DT);
   }
 
@@ -621,7 +591,27 @@ export class Game {
     // terrain + ore slices
     const sw = vw / z, sh = vh / z;
     ctx.drawImage(this.map.terrainCanvas, cam.x, cam.y, sw, sh, 0, 0, vw, vh);
+    // water shimmer
+    if (this.map.glintCanvas) {
+      const t = this.time;
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * 1.9);
+      ctx.drawImage(this.map.glintCanvas, cam.x - Math.sin(t * 0.9) * 2, cam.y - Math.cos(t * 0.7) * 1.5, sw, sh, 0, 0, vw, vh);
+      ctx.globalAlpha = 1;
+    }
     ctx.drawImage(this.map.oreCanvas, cam.x, cam.y, sw, sh, 0, 0, vw, vh);
+
+    // tread marks
+    for (const tk of this.tracks) {
+      const k = Math.min(1, tk.ttl / 3.5);
+      ctx.save();
+      ctx.translate((tk.x - cam.x) * z, (tk.y - cam.y) * z);
+      ctx.rotate(tk.ang);
+      ctx.fillStyle = `rgba(28,24,18,${0.30 * k})`;
+      const half = tk.r * 0.55 * z;
+      ctx.fillRect(-2.6 * z, -half - 1.2 * z, 5.2 * z, 2.4 * z);
+      ctx.fillRect(-2.6 * z, half - 1.2 * z, 5.2 * z, 2.4 * z);
+      ctx.restore();
+    }
 
     // decals & husks
     for (const dcl of this.decals) {
@@ -712,5 +702,11 @@ export class Game {
     for (const e of drawList) e.drawOverlay(ctx, cam, this, e === hovered);
 
     hudDraw && hudDraw(ctx, cam);
+
+    // opening fade-in
+    if (this.introT > 0) {
+      ctx.fillStyle = `rgba(3,4,6,${Math.min(1, this.introT / 1.4)})`;
+      ctx.fillRect(0, 0, vw, vh);
+    }
   }
 }

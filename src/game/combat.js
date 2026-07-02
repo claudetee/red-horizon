@@ -30,18 +30,19 @@ export class Combat {
     const w = weapon;
     const g = this.game;
     const tx = target.x, ty = target.y;
+    const vetMul = 1 + 0.2 * (shooter.rank || 0);   // veterancy damage bonus
     if (w.kind === 'bullet') {
       // instant hit with tracer
       this.tracers.push({ x0: sx, y0: sy, x1: tx + (g.rng() - .5) * 6, y1: ty + (g.rng() - .5) * 6, life: 0.06 });
-      this.applyDamage(target, w.dmg * (w.vs[target.armorClass()] ?? 1), shooter);
+      this.applyDamage(target, w.dmg * vetMul * (w.vs[target.armorClass()] ?? 1), shooter);
       this.spark(tx, ty, 2);
     } else if (w.kind === 'shell') {
       const d = dist(sx, sy, tx, ty);
       const dur = Math.max(0.12, d / w.speed);
-      this.projectiles.push({ kind: 'shell', x: sx, y: sy, sx, sy, tx, ty, t: 0, dur, w, owner: shooter.owner, shooter });
+      this.projectiles.push({ kind: 'shell', x: sx, y: sy, sx, sy, tx, ty, t: 0, dur, w, vetMul, owner: shooter.owner, shooter });
     } else if (w.kind === 'rocket') {
       const ang = Math.atan2(ty - sy, tx - sx) + (g.rng() - .5) * 0.5;
-      this.projectiles.push({ kind: 'rocket', x: sx, y: sy, ang, spd: w.speed * 0.45, target, tx, ty, life: 3.2, w, owner: shooter.owner, shooter });
+      this.projectiles.push({ kind: 'rocket', x: sx, y: sy, ang, spd: w.speed * 0.45, target, tx, ty, life: 3.2, w, vetMul, owner: shooter.owner, shooter });
     }
     this.muzzle(sx, sy, Math.atan2(ty - sy, tx - sx), w.kind !== 'bullet');
     g.audio.sfx(w.sfx, { x: sx, y: sy });
@@ -60,7 +61,7 @@ export class Combat {
         p.y = p.sy + (p.ty - p.sy) * k;
         if (k >= 1) {
           this.projectiles.splice(i, 1);
-          this.impact(p.tx, p.ty, p.w, p.shooter);
+          this.impact(p.tx, p.ty, p.w, p.shooter, p.vetMul);
         }
       } else if (p.kind === 'rocket') {
         p.life -= DT;
@@ -75,7 +76,7 @@ export class Combat {
         if ((g.tick & 1) === 0) this.puff(p.x, p.y, 'smoke', 3, 0.55);
         if (dist2(p.x, p.y, tx, ty) < 100 || p.life <= 0) {
           this.projectiles.splice(i, 1);
-          this.impact(p.x, p.y, p.w, p.shooter);
+          this.impact(p.x, p.y, p.w, p.shooter, p.vetMul);
         }
       }
     }
@@ -95,7 +96,7 @@ export class Combat {
     }
   }
 
-  impact(x, y, w, shooter) {
+  impact(x, y, w, shooter, vetMul = 1) {
     const g = this.game;
     const r = (w.splash || 10);
     this.explosion(x, y, r <= 13 ? 0.55 : 0.75);
@@ -109,7 +110,7 @@ export class Combat {
       const d = Math.max(0, dist(x, y, e.x, e.y) - rr);
       if (d > r) return;
       const fall = 1 - 0.55 * (d / r);
-      this.applyDamage(e, w.dmg * (w.vs[e.armorClass()] ?? 1) * fall, shooter);
+      this.applyDamage(e, w.dmg * vetMul * (w.vs[e.armorClass()] ?? 1) * fall, shooter);
     });
     if (g.rng() < 0.3) g.addDecal(x, y);
   }

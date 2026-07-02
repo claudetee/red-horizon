@@ -329,6 +329,27 @@ def process(inp, outp, ptype, opts):
         if opts.get('outline', ptype != 'building'):
             w, h, px = pad(w, h, px, 1)
             w, h, px = outline(w, h, px)
+    elif ptype == 'cameo':
+        tw, th = opts.get('w', 100), opts.get('h', 86)
+        # center-crop to target aspect, then scale
+        want = tw / th
+        have = w / h
+        if have > want:
+            cw = int(h * want)
+            x0 = (w - cw) // 2
+            out = bytearray(cw * h * 4)
+            for y in range(h):
+                out[y*cw*4:(y+1)*cw*4] = px[(y*w+x0)*4:(y*w+x0+cw)*4]
+            w, px = cw, out
+        elif have < want:
+            ch = int(w / want)
+            y0 = (h - ch) // 2
+            px = px[y0*w*4:(y0+ch)*w*4]
+            h = ch
+        w, h, px = scale_box(w, h, px, tw, th)
+        for i in range(tw*th):
+            px[i*4+3] = 255
+        w, h, px = quantize(w, h, px, opts.get('quantize', 128))
     elif ptype == 'terrain':
         size = opts.get('size', 128)
         w, h, px = scale_box(w, h, px, size, size)

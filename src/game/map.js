@@ -174,6 +174,66 @@ export class GameMap {
         ctx.drawImage(s, cx * TILE + TILE / 2 - s.width / 2 + jx, cy * TILE + TILE / 2 - s.height / 2 + jy);
       }
     }
+
+    // ambience doodads: grass tufts, pebbles, sparse wrecks (2003 map-dressing density)
+    const grass = spr('prop_grass'), stones = spr('prop_stones'), wreck = spr('prop_wreck');
+    if (grass && stones) {
+      for (let cy = 0; cy < h; cy++) {
+        for (let cx = 0; cx < w; cx++) {
+          if (this.tiles[cy * w + cx] !== T_GRASS || this.ore[cy * w + cx] > 0) continue;
+          const r = jr();
+          if (r < 0.05) {
+            const s = r < 0.032 ? grass : stones;
+            ctx.drawImage(s, cx * TILE + jr() * 20, cy * TILE + jr() * 20);
+          }
+        }
+      }
+    }
+    if (wreck) {
+      for (let i = 0; i < 9; i++) {
+        const cx = 8 + jr() * (w - 16), cy = 8 + jr() * (h - 16);
+        const t = this.tiles[(cy | 0) * w + (cx | 0)];
+        if (t !== T_GRASS && t !== T_DIRT) continue;
+        if (Math.min(...this.starts.map(s => Math.hypot(s.cx - cx, s.cy - cy))) < 14) continue;
+        ctx.save();
+        ctx.translate(cx * TILE, cy * TILE);
+        ctx.rotate(jr() * Math.PI * 2);
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(wreck, -wreck.width / 2, -wreck.height / 2);
+        ctx.restore();
+      }
+    }
+
+    // large-scale light/shadow patches — fake baked cloud lighting
+    for (let i = 0; i < 42; i++) {
+      const bx = jr() * w * TILE, by = jr() * h * TILE;
+      const r = 260 + jr() * 480;
+      const dark = jr() < 0.55;
+      const gr = ctx.createRadialGradient(bx, by, 0, bx, by, r);
+      gr.addColorStop(0, dark ? 'rgba(8,10,18,0.07)' : 'rgba(255,240,200,0.045)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(bx - r, by - r, r * 2, r * 2);
+    }
+
+    // water glint layer for shimmer animation at render time
+    const gl = document.createElement('canvas');
+    gl.width = w * TILE; gl.height = h * TILE;
+    const gctx = gl.getContext('2d');
+    let hasWater = false;
+    for (let cy = 0; cy < h; cy++) {
+      for (let cx = 0; cx < w; cx++) {
+        if (this.tiles[cy * w + cx] !== T_WATER) continue;
+        hasWater = true;
+        for (let k = 0; k < 3; k++) {
+          if (jr() < 0.55) continue;
+          gctx.fillStyle = jr() < 0.5 ? 'rgba(180,220,235,0.5)' : 'rgba(120,190,210,0.4)';
+          gctx.fillRect(cx * TILE + jr() * 28, cy * TILE + jr() * 28, 1 + jr() * 2.4, 1);
+        }
+      }
+    }
+    this.glintCanvas = hasWater ? gl : null;
+
     this.terrainCanvas = c;
     return c;
   }

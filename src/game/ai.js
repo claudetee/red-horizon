@@ -144,48 +144,18 @@ export class AIController {
   }
 
   manageUnits() {
+    // per-building queues: keep each factory fed with one item at a time
     const g = this.g;
-    // drop production jobs whose factory died (money already spent — that's war)
-    for (const [bid] of this.unitJobs) {
-      const b = g.byId.get(bid);
-      if (!b || b.hp <= 0) this.unitJobs.delete(bid);
-    }
-    // conyard replaces lost engineer trucks
+    if ((g.tick % 10) !== 0) return;
     for (const b of g.buildings) {
-      if (b.owner !== this.me || b.hp <= 0 || b.state !== 'active' || b.key !== 'conyard') continue;
-      let job = this.unitJobs.get(b.id);
-      if (job) {
-        job.t += DT * this.diff.income;
-        if (job.t >= job.total) {
-          this.unitJobs.delete(b.id);
-          g.spawnUnitFromFactory(b, job.key);
-        }
+      if (b.owner !== this.me || b.hp <= 0 || b.state !== 'active' || b.queue.length) continue;
+      if (b.key === 'conyard') {
+        if (this.builders().length < 2 && g.credits[this.me] >= UNITS.builder.cost * 0.5) b.enqueue(g, 'builder');
         continue;
       }
-      if (this.builders().length < 2 && g.credits[this.me] >= UNITS.builder.cost) {
-        g.credits[this.me] -= UNITS.builder.cost;
-        this.unitJobs.set(b.id, { key: 'builder', t: 0, total: BUILD_TIME(UNITS.builder.cost) });
-      }
-    }
-    for (const b of g.buildings) {
-      if (b.owner !== this.me || b.hp <= 0 || b.state !== 'active' || !b.d.produces) continue;
-      let job = this.unitJobs.get(b.id);
-      if (job) {
-        const lowPow = g.power[this.me].out < g.power[this.me].use;
-        job.t += DT * (lowPow ? ECON.lowPowerBuildFactor : 1) * this.diff.income;
-        if (job.t >= job.total) {
-          this.unitJobs.delete(b.id);
-          g.spawnUnitFromFactory(b, job.key);
-        }
-        continue;
-      }
+      if (!b.d.produces) continue;
       const want = this.desiredUnit(b.d.produces);
-      if (!want) continue;
-      const cost = UNITS[want].cost;
-      if (g.credits[this.me] >= cost) {
-        g.credits[this.me] -= cost;
-        this.unitJobs.set(b.id, { key: want, t: 0, total: BUILD_TIME(cost) });
-      }
+      if (want && g.credits[this.me] >= UNITS[want].cost * 0.4) b.enqueue(g, want);
     }
   }
 

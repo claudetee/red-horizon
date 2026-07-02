@@ -123,6 +123,9 @@ export function sprTeam(name, owner) {
 export function sprMeta(name) { return store.meta[name]; }
 export function decal(name) { return store.decal[name]; }
 export function cameo(name) {
+  // prefer hand-generated RA2-style portrait if present
+  const pre = store.img['cameo_' + name];
+  if (pre) return pre;
   if (!store.cameo[name]) store.cameo[name] = makeCameo(store.img[name]);
   return store.cameo[name];
 }
