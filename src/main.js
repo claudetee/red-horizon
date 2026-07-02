@@ -195,10 +195,13 @@ $('set-edge').addEventListener('change', e => { settings.edge = e.target.checked
 
 $('app').addEventListener('contextmenu', e => e.preventDefault());
 
-// pause on Esc handled by hud; global Esc on pause screen resumes
+// pause on Esc handled by hud; global Esc on pause screen resumes.
+// stopImmediatePropagation: HUD's later-registered keydown must not see this same
+// event, or it would re-pause the game it just resumed.
 window.addEventListener('keydown', e => {
   if (e.code === 'Escape' && game && game.paused && !$('screen-pause').classList.contains('hidden')) {
     game.paused = false; showScreen(null);
+    e.stopImmediatePropagation();
   }
 });
 

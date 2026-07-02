@@ -216,6 +216,11 @@ export class Unit {
   moveAlong(g) {
     if (this.pendingPath) return false;
     if (!this.path || this.pathIdx >= this.path.length) {
+      // if the exact destination sits on blocked ground (click on a building/water),
+      // the end of the path IS the arrival — never wall-hug toward it
+      const dcx = clamp((this.destX / TILE) | 0, 0, g.map.w - 1);
+      const dcy = clamp((this.destY / TILE) | 0, 0, g.map.h - 1);
+      if (!g.map.isPassable(dcx, dcy)) { this.path = null; return true; }
       // final approach to exact dest point; give up if the way is physically blocked
       const d = dist(this.x, this.y, this.destX, this.destY);
       if (d > 6 && this.path) {
