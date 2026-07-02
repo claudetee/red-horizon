@@ -30,8 +30,16 @@ export class Sidebar {
     document.querySelectorAll('#tabs .tab').forEach(b => {
       b.addEventListener('click', () => { this.setTab(b.dataset.tab); this.audio.sfx('click'); });
     });
+    this.setGame(game);
+  }
+
+  setGame(game) {
+    this.g = game;
     game.onSidebarDirty = () => this.rebuild();
+    this.dispCredits = game.credits[0];
     this.elCredits.textContent = Math.floor(this.dispCredits);
+    this.activeTab = 'build';
+    document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'build'));
     this.rebuild();
   }
 

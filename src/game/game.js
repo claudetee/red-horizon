@@ -73,6 +73,9 @@ export class Game {
 
     this.setupStart();
     this.ai = new AIController(this, this.diff);
+    // opening guidance
+    this.delayed.push({ at: 45, fn: () => { this.onBanner && this.onBanner('指挥官，先建造发电厂 (Q) 与矿石精炼厂 (W)', 'good'); } });
+    this.delayed.push({ at: 240, fn: () => { this.onBanner && this.onBanner('矿石精炼厂附赠采矿车，经济就是火力', 'gold'); } });
   }
 
   // ---------- setup ----------
@@ -106,6 +109,7 @@ export class Game {
     const cell = this.map.findFreeNear((door.x / TILE) | 0, (door.y / TILE) | 0, taken, 6);
     const u = this.spawnUnit(key, b.owner, b.x, b.y + b.fh * TILE * 0.25);
     u.heading = Math.PI / 2;
+    this.combat.puff(door.x, door.y, 'dust', 6, 0.6);
     const rp = b.rallyPoint();
     if (u.harv) {
       u.x = cell.cx * TILE + 16; u.y = cell.cy * TILE + 16;
@@ -494,6 +498,23 @@ export class Game {
     if ((this.tick % 6) === 0) this.fog.update(this);
     if ((this.tick % 30) === 0) this.map.regenOre(1.0);
     if ((this.tick % 15) === 0) this.checkEnd();
+
+    // ore glints in view
+    if ((this.tick % 12) === 0) {
+      const dpr = this.canvas.__dpr || 1;
+      const vw = this.canvas.width / dpr, vh = this.canvas.height / dpr;
+      for (let i = 0; i < 6; i++) {
+        const cx = ((this.cam.x + this.rng() * vw / this.cam.zoom) / TILE) | 0;
+        const cy = ((this.cam.y + this.rng() * vh / this.cam.zoom) / TILE) | 0;
+        if (this.map.inB(cx, cy) && this.map.ore[cy * this.map.w + cx] > 100 && this.fog.isVisibleCell(cx, cy)) {
+          this.combat.add({
+            type: 'spark', x: cx * TILE + 8 + this.rng() * 16, y: cy * TILE + 8 + this.rng() * 16,
+            vx: 0, vy: -6, life: 0.5, maxLife: 0.5, size: 1.6, drag: 1,
+          });
+          break;
+        }
+      }
+    }
 
     // markers/pings decay
     for (let i = this.markers.length - 1; i >= 0; i--) {

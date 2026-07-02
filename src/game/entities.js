@@ -95,6 +95,11 @@ export class Unit {
       }
     }
 
+    // heavy damage smoke trail
+    if (this.hp < this.maxHp * 0.42 && this.d.kind !== 'inf' && ((g.tick + this.id) % 18) === 0) {
+      g.combat.puff(this.x, this.y, 'smoke', 4, 1.0);
+    }
+
     switch (this.state) {
       case 'move':
         if (this.moveAlong(g)) this.state = 'idle';
@@ -361,9 +366,15 @@ export class Unit {
     ctx.ellipse(px + 2 * z, py + 3 * z, this.d.r * 1.05 * z, this.d.r * 0.7 * z, 0, 0, 7);
     ctx.fill();
 
+    // infantry bob while marching
+    let bobY = 0, bobR = 0;
+    if (this.d.kind === 'inf' && this.path && this.pathIdx < (this.path.length || 0)) {
+      bobY = Math.sin(g.time * 13 + this.id * 1.7) * 0.9 * z;
+      bobR = Math.sin(g.time * 6.5 + this.id) * 0.06;
+    }
     ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(this.heading + Math.PI / 2);
+    ctx.translate(px, py + bobY);
+    ctx.rotate(this.heading + Math.PI / 2 + bobR);
     ctx.imageSmoothingEnabled = z % 1 !== 0;
     if (this.flash > 0) ctx.filter = 'brightness(2.2) saturate(0.6)';
     ctx.drawImage(img, -img.width * z / 2, -img.height * z / 2, img.width * z, img.height * z);

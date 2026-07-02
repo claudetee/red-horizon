@@ -21,6 +21,13 @@ export class CameraRig {
     window.addEventListener('blur', () => this.keys.clear());
   }
 
+  setGame(game) {
+    this.game = game;
+    this.panning = false;
+    this.panStart = null;
+    this.clampCam();
+  }
+
   screenToWorld(sx, sy) {
     const cam = this.game.cam;
     return { x: cam.x + sx / cam.zoom, y: cam.y + sy / cam.zoom };

@@ -32,15 +32,28 @@ export class HUD {
     this.mmTerrain = null;
     this.banners = document.getElementById('banners');
 
+    this.enabled = true;
     this.cursors = this.buildCursors();
     this.bindCanvas();
     this.bindKeys();
     this.bindMinimap();
     this.bindCmdButtons();
-    this.buildMinimapTerrain();
-
-    game.onBanner = (t, cls) => this.banner(t, cls);
     document.getElementById('objective-pin').textContent = '任务目标：歼灭猩红军团所有建筑';
+    this.setGame(game);
+  }
+
+  setGame(game) {
+    this.g = game;
+    game.onBanner = (t, cls) => this.banner(t, cls);
+    this.attackArmed = false;
+    this.mouse.down = false;
+    this.mouse.dragging = false;
+    this.lastClickTarget = null;
+    this.panRef = null;
+    this.banners.innerHTML = '';
+    this.setMode('normal');
+    this.buildMinimapTerrain();
+    this.enabled = true;
   }
 
   // ---------------- cursors ----------------
@@ -109,6 +122,7 @@ export class HUD {
     cv.addEventListener('contextmenu', e => e.preventDefault());
 
     cv.addEventListener('mousedown', e => {
+      if (!this.enabled) return;
       this.audio.ensure();
       const g = this.g;
       this.syncMouse(e);
@@ -148,6 +162,7 @@ export class HUD {
     });
 
     window.addEventListener('mousemove', e => {
+      if (!this.enabled) return;
       this.syncMouse(e);
       if (this.rig.panning && this.panRef) {
         const g = this.g;
@@ -174,6 +189,7 @@ export class HUD {
     });
 
     window.addEventListener('mouseup', e => {
+      if (!this.enabled) return;
       if (e.button === 1) { this.rig.panning = false; this.panRef = null; return; }
       if (e.button !== 0 || !this.mouse.down) return;
       this.mouse.down = false;
@@ -284,6 +300,7 @@ export class HUD {
   // ---------------- keys ----------------
   bindKeys() {
     window.addEventListener('keydown', e => {
+      if (!this.enabled) return;
       const g = this.g;
       if (document.querySelector('.screen:not(.hidden):not(#screen-loading)') && e.code !== 'Escape') return;
       switch (e.code) {
@@ -370,9 +387,11 @@ export class HUD {
 
   bindCmdButtons() {
     document.getElementById('btn-sell').addEventListener('click', () => {
+      if (!this.enabled) return;
       this.audio.ensure(); this.setMode(this.g.mode === 'sell' ? 'normal' : 'sell'); this.audio.sfx('click');
     });
     document.getElementById('btn-repair').addEventListener('click', () => {
+      if (!this.enabled) return;
       this.audio.ensure(); this.setMode(this.g.mode === 'repair' ? 'normal' : 'repair'); this.audio.sfx('click');
     });
     document.getElementById('btn-menu').addEventListener('click', () => {
@@ -409,6 +428,7 @@ export class HUD {
     };
     let down = false;
     mm.addEventListener('mousedown', e => {
+      if (!this.enabled) return;
       if (!this.g.hasRadar() && !this.g.debug) return;
       down = true;
       const w = toWorld(e);

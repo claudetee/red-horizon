@@ -169,13 +169,16 @@ body { font-family: var(--font-cn); color: var(--txt); user-select: none; -webki
 .screen {
   position: fixed; inset: 0; z-index: 40;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(5,7,10,.88);
+  background: rgba(5,7,10,.82);
+  backdrop-filter: blur(3px);
 }
 #screen-title { background: #05070a; }
 .title-bg {
   position: absolute; inset: 0; background: url('assets/img/title_art.png') center/cover no-repeat;
   filter: saturate(1.05);
+  animation: title-drift 36s ease-in-out infinite alternate;
 }
+@keyframes title-drift { from { transform: scale(1); } to { transform: scale(1.055); } }
 .title-bg::after {
   content: ''; position: absolute; inset: 0;
   background: linear-gradient(180deg, rgba(5,7,10,.25) 0%, rgba(5,7,10,0) 30%, rgba(5,7,10,.82) 88%);

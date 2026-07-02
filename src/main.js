@@ -58,12 +58,15 @@ function newGame(difficulty) {
   const seed = params.has('seed') ? Number(params.get('seed')) : ((Math.random() * 1e9) | 0);
   game = new Game(cv, audio, { difficulty, seed, debug: DEBUG });
   audio.game = game;
-  rig = new CameraRig(game, $('viewport'));
+  if (!rig) rig = new CameraRig(game, $('viewport'));
+  else rig.setGame(game);
   rig.edgeScroll = settings.edge;
-  sidebar = new Sidebar(game, audio);
-  hud = new HUD(game, audio, sidebar, rig, $('viewport'));
+  if (!sidebar) sidebar = new Sidebar(game, audio);
+  else sidebar.setGame(game);
+  if (!hud) hud = new HUD(game, audio, sidebar, rig, $('viewport'));
+  else hud.setGame(game);
   hud.onEsc = () => {
-    if (game.over) return;
+    if (!game || game.over) return;
     game.paused = true;
     showScreen('pause');
   };
@@ -169,6 +172,7 @@ function quitToTitle() {
   audio.stopMusic();
   cancelAnimationFrame(raf);
   game = null;
+  if (hud) hud.enabled = false;
   $('app').classList.add('hidden');
   showScreen('title');
 }
