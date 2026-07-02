@@ -73,9 +73,9 @@ function makeDecals() {
     const ctx = c.getContext('2d');
     const cx = s / 2, cy = s / 2;
     const rg = ctx.createRadialGradient(cx, cy, 1, cx, cy, s / 2);
-    rg.addColorStop(0, 'rgba(8,6,5,0.85)');
-    rg.addColorStop(0.55, 'rgba(12,10,8,0.55)');
-    rg.addColorStop(1, 'rgba(12,10,8,0)');
+    rg.addColorStop(0, 'rgba(10,8,6,0.5)');
+    rg.addColorStop(0.55, 'rgba(14,12,9,0.3)');
+    rg.addColorStop(1, 'rgba(14,12,9,0)');
     ctx.fillStyle = rg;
     // irregular blob
     ctx.beginPath();
