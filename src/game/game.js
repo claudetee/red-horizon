@@ -167,7 +167,7 @@ export class Game {
     return null;
   }
 
-  canPlace(key, cx, cy, owner = PLAYER) {
+  canPlace(key, cx, cy, owner = this.localPlayer) {
     const d = BUILDINGS[key];
     if (!d) return false;
     for (let y = cy; y < cy + d.fh; y++)
@@ -184,7 +184,7 @@ export class Game {
     return false;
   }
 
-  placeBuilding(key, cx, cy, owner = PLAYER, instant = false) {
+  placeBuilding(key, cx, cy, owner = this.localPlayer, instant = false) {
     const b = new Building(key, owner, cx, cy, instant);
     this.buildings.push(b);
     this.byId.set(b.id, b);
